@@ -41,6 +41,7 @@ const ROUTES = [
     'account_reset_password' => ['POST', 'admin', 'act_account_reset_password'],
     'account_set_active'     => ['POST', 'admin', 'act_account_set_active'],
     'account_unlock'         => ['POST', 'admin', 'act_account_unlock'],
+    'account_set_password'   => ['POST', 'admin', 'act_account_set_password'],
     'relationship_upsert'    => ['POST', 'login', 'act_relationship_upsert'],
     'relationship_delete'    => ['POST', 'login', 'act_relationship_delete'],
     'team_seed'              => ['POST', 'admin', 'act_team_seed'],
@@ -232,7 +233,11 @@ function team_name_taken(string $name, ?string $exceptId = null): bool
 }
 
 /** 부서원 계정을 users.json에 추가한다 (with_lock 안에서 호출). 임시 비밀번호를 반환. */
-function add_member_account(string $teamId, string $personId, string $loginId): array
+/**
+ * 부서원 계정을 users.json에 추가한다 (with_lock 안에서 호출).
+ * $password가 없으면 임시 비밀번호를 만들고 첫 로그인 때 변경을 요구한다.
+ */
+function add_member_account(string $teamId, string $personId, string $loginId, ?string $password = null, ?bool $mustChange = null): array
 {
     $doc = load_users();
     if (find_user_by_login($doc, $loginId) !== null) {
@@ -243,7 +248,7 @@ function add_member_account(string $teamId, string $personId, string $loginId): 
             throw new ApiError(409, '이미 계정이 있는 부서원입니다.');
         }
     }
-    $temp = generate_temp_password();
+    $temp = $password ?? generate_temp_password();
     $user = [
         'id' => new_id('u'),
         'loginId' => $loginId,
@@ -252,13 +257,13 @@ function add_member_account(string $teamId, string $personId, string $loginId): 
         'teamId' => $teamId,
         'personId' => $personId,
         'active' => true,
-        'mustChangePassword' => true,
+        'mustChangePassword' => $mustChange ?? ($password === null),
         'consentedAt' => null,
         'createdAt' => now_iso(),
     ];
     $doc['users'][] = $user;
     save_users($doc);
-    return ['user' => $user, 'tempPassword' => $temp];
+    return ['user' => $user, 'tempPassword' => $password === null ? $temp : null];
 }
 
 /** 팀 $teamId의 부서원 $personId 계정을 찾는다. */
@@ -715,8 +720,15 @@ function act_person_create(array $input, array $ctx): array
     $position = valid_position($input['position'] ?? 'member');
     $loginRaw = $input['loginId'] ?? '';
     $loginId = (is_string($loginRaw) && trim($loginRaw) !== '') ? clean_login_id($loginRaw) : null;
+    // 관리자가 비밀번호를 직접 지정할 수 있음 (비우면 임시 비밀번호 발급)
+    $pwRaw = $input['password'] ?? '';
+    $password = (is_string($pwRaw) && $pwRaw !== '') ? validate_password_policy($pwRaw) : null;
+    if ($password !== null && $loginId === null) {
+        throw new ApiError(400, '비밀번호를 지정하려면 로그인 ID도 입력하세요.');
+    }
+    $mustChange = $password !== null ? !empty($input['mustChangePassword']) : null;
 
-    $result = with_lock(function () use ($teamId, $name, $deptId, $position, $loginId) {
+    $result = with_lock(function () use ($teamId, $name, $deptId, $position, $loginId, $password, $mustChange) {
         $meta = find_team_meta($teamId);
         if ($loginId !== null && find_user_by_login(load_users(), $loginId) !== null) {
             throw new ApiError(409, '이미 사용 중인 로그인 ID입니다.');
@@ -738,7 +750,7 @@ function act_person_create(array $input, array $ctx): array
             $team['people'][] = $person;
             return $person;
         });
-        $account = $loginId !== null ? add_member_account($teamId, $person['id'], $loginId) : null;
+        $account = $loginId !== null ? add_member_account($teamId, $person['id'], $loginId, $password, $mustChange) : null;
         return ['person' => $person, 'account' => $account];
     });
     $uid = $ctx['user']['id'];
@@ -750,6 +762,46 @@ function act_person_create(array $input, array $ctx): array
         $out['tempPassword'] = $result['account']['tempPassword'];
     }
     return $out;
+}
+
+/**
+ * 관리자가 부서원의 비밀번호를 직접 지정한다. 계정이 없으면 loginId로 계정을 만든다.
+ * 로그인 잠금도 함께 해제한다.
+ */
+function act_account_set_password(array $input, array $ctx): array
+{
+    $teamId = resolve_team_id($ctx, $input);
+    $personId = assert_id($input['personId'] ?? null, '부서원 ID');
+    $password = validate_password_policy($input['password'] ?? null);
+    $mustChange = !empty($input['mustChangePassword']);
+    $loginRaw = $input['loginId'] ?? '';
+    $loginId = (is_string($loginRaw) && trim($loginRaw) !== '') ? clean_login_id($loginRaw) : null;
+    $res = with_lock(function () use ($teamId, $personId, $password, $mustChange, $loginId) {
+        $team = require_team($teamId);
+        if (find_index($team['people'], $personId) < 0) {
+            throw new ApiError(404, '부서원을 찾을 수 없습니다.');
+        }
+        $doc = load_users();
+        foreach ($doc['users'] as &$u) {
+            if ($u['role'] === 'member' && $u['teamId'] === $teamId && $u['personId'] === $personId) {
+                $u['passwordHash'] = hash_password($password);
+                $u['mustChangePassword'] = $mustChange;
+                save_users($doc);
+                return ['loginId' => $u['loginId'], 'created' => false];
+            }
+        }
+        unset($u);
+        if ($loginId === null) {
+            throw new ApiError(400, '계정이 없는 부서원입니다. 로그인 ID를 입력하면 계정을 만들고 비밀번호를 지정합니다.');
+        }
+        add_member_account($teamId, $personId, $loginId, $password, $mustChange);
+        mutate_team($teamId, fn() => null);
+        return ['loginId' => $loginId, 'created' => true];
+    });
+    unlock_login($res['loginId']);
+    $name = person_name(require_team($teamId), $personId);
+    audit($ctx['user']['id'], $res['created'] ? 'account_create' : 'account_set_password', $teamId, $res['loginId'], $name);
+    return $res;
 }
 
 function act_person_update(array $input, array $ctx): array
@@ -1073,7 +1125,9 @@ function act_team_import(array $input, array $ctx): array
                 throw new ApiError(400, "부서명이 중복됩니다: {$dname}");
             }
         }
-        $color = isset($d['color']) ? valid_color($d['color']) : next_department_color($departments);
+        // 예전 색상표의 색(1.0.0 이하에서 내보낸 파일)은 새 색상표에서 다시 배정
+        $legacy = is_string($d['color'] ?? null) && in_array(strtoupper($d['color']), LEGACY_COLORS, true);
+        $color = isset($d['color']) && !$legacy ? valid_color($d['color']) : next_department_color($departments);
         $deptMap[$oldId] = new_id('d');
         $departments[] = ['id' => $deptMap[$oldId], 'name' => $dname, 'color' => $color];
     }

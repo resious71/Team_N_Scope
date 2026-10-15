@@ -78,7 +78,7 @@ const AUDIT_LABELS = {
   team_create: '팀 생성', team_update: '팀 수정', team_delete: '팀 삭제', team_seed: '샘플 데이터', team_export: '팀 내보내기', team_import: '팀 가져오기',
   department_create: '부서 추가', department_update: '부서 수정', department_delete: '부서 삭제',
   person_create: '부서원 추가', person_update: '부서원 수정', person_delete: '부서원 삭제',
-  account_create: '계정 발급', account_reset_password: '비밀번호 초기화', account_activate: '계정 활성화', account_deactivate: '계정 비활성화', account_unlock: '잠금 해제',
+  account_create: '계정 발급', account_set_password: '비밀번호 지정', account_reset_password: '비밀번호 초기화', account_activate: '계정 활성화', account_deactivate: '계정 비활성화', account_unlock: '잠금 해제',
   relationship_create: '관계 추가', relationship_update: '관계 수정', relationship_delete: '관계 삭제',
   person_bulk_create: '부서원 일괄 등록',
   admin_create: '관리자 추가', admin_reset_password: '관리자 비밀번호 초기화', admin_activate: '관리자 활성화',
@@ -112,6 +112,8 @@ const S = {
   personSelected: new Set(),
   relSelected: new Set(),
   deptEditColor: null,
+  myRelStatus: '',
+  adminRelStatus: '',
   view: null,        // 관계도 표시 범위 { scope: team|dept|person, deptId, personId }
 };
 
@@ -151,14 +153,6 @@ function fmtDate(iso) {
   if (Number.isNaN(d.getTime())) return iso;
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/** 색을 흰색과 섞어 파스텔 톤으로 (amount: 흰색 비율 0~1) */
-function pastel(hex, amount = 0.5) {
-  const n = parseInt(hex.slice(1), 16);
-  const mix = (c) => Math.round(c + (255 - c) * amount);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix);
-  return `rgb(${r}, ${g}, ${b})`;
 }
 
 function fmtScore(n) {
@@ -750,7 +744,9 @@ function renderChart() {
       edges.classed('hover', false);
       hideTooltip();
     });
-  nodes.append('circle').attr('r', 6).attr('fill', (p) => deptColor(p.departmentId));
+  // 파스텔 부서색이 흰 바탕에서도 보이도록 같은 계열의 진한 테두리
+  nodes.append('circle').attr('r', 6.5).attr('fill', (p) => deptColor(p.departmentId))
+    .style('--node-stroke', (p) => d3.color(deptColor(p.departmentId)).darker(1.1).formatHex());
   nodes.append('text')
     .attr('dy', '0.32em')
     .attr('x', (p) => (pos.get(p.id).angle < 180 ? 10 : -10))
@@ -916,6 +912,7 @@ function renderMyPanel() {
       return { r, first, second, label: involvesMe ? `나 ↔ ${personName(second)}` : `${personName(first)} ↔ ${personName(second)}` };
     })
     .filter((x) => !q || personName(x.first).toLowerCase().includes(q) || personName(x.second).toLowerCase().includes(q))
+    .filter((x) => !S.myRelStatus || x.r.status === S.myRelStatus)
     .sort((x, y) => collator.compare(x.label, y.label));
   const list = clear($('my-rel-list'));
   if (!rows.length) list.append(h('li', { class: 'empty', text: manageable.length ? '검색 결과가 없습니다.' : '아직 입력한 관계가 없습니다.' }));
@@ -999,7 +996,7 @@ function renderDeptStats() {
   for (const { d, n } of counts) {
     box.append(h('div', { class: 'stat-row', title: `${d.name}: ${n}명` }, [
       h('span', { class: 'name' }, [h('span', { class: 'dot', style: { background: d.color } }), d.name]),
-      h('div', { class: 'stat-bar' }, [h('span', { style: { width: `${(n / max) * 100}%`, background: pastel(d.color) } })]),
+      h('div', { class: 'stat-bar' }, [h('span', { style: { width: `${(n / max) * 100}%`, background: d.color } })]),
       h('span', { class: 'num', text: `${n}명` }),
     ]));
   }
@@ -1148,6 +1145,46 @@ function vacancyWarning(people) {
   return lines.length ? `\n\n${lines.join('\n')}` : '';
 }
 
+/** 부서원 목록의 부서 칸: 바로 바꿀 수 있는 드롭다운 */
+function inlineDeptSelect(p) {
+  const sel = h('select', { class: 'inline-select', 'aria-label': `${p.name}의 부서` });
+  for (const d of S.data.departments) sel.append(h('option', { value: d.id, text: d.name }));
+  sel.value = p.departmentId;
+  sel.addEventListener('click', (e) => e.stopPropagation());
+  sel.addEventListener('change', safe(async () => {
+    const to = deptById(sel.value);
+    const warn = p.position === 'head' ? vacancyWarning([p]) : '';
+    if (!confirm(`${p.name}의 부서를 '${to ? to.name : ''}'(으)로 바꿀까요?${warn}`)) { sel.value = p.departmentId; return; }
+    try {
+      await mutate('person_update', teamBody({ personId: p.id, departmentId: sel.value }), { success: `${p.name}의 부서를 변경했습니다.` });
+    } catch (e) {
+      sel.value = p.departmentId;
+      throw e;
+    }
+  }));
+  return sel;
+}
+
+/** 관리자: 부서원 비밀번호 지정 (계정이 없으면 로그인 ID로 계정 생성) */
+function openPasswordDialog(p) {
+  const dlg = $('pw-set-dialog');
+  dlg.dataset.personId = p.id;
+  $('pw-set-name').textContent = p.name;
+  $('pw-set-info').textContent = p.account
+    ? `로그인 ID: ${p.account.loginId}`
+    : '아직 계정이 없습니다. 로그인 ID를 입력하면 계정을 만들고 비밀번호를 지정합니다.';
+  $('pw-set-login-label').hidden = !!p.account;
+  $('pw-set-login').value = '';
+  $('pw-set-login').required = !p.account;
+  $('pw-set-username').value = p.account ? p.account.loginId : '';
+  $('pw-set-password').value = '';
+  $('pw-set-confirm').value = '';
+  $('pw-set-mustchange').checked = false;
+  $('pw-set-error').textContent = '';
+  openDialog(dlg);
+  (p.account ? $('pw-set-password') : $('pw-set-login')).focus();
+}
+
 function renderPeopleAdmin() {
   const t = S.data.team;
   const n = S.data.people.length;
@@ -1161,7 +1198,7 @@ function renderPeopleAdmin() {
 
   const body = clear($('person-table'));
   const people = orderedPeople();
-  if (!people.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '6', text: '부서원이 없습니다.' })]));
+  if (!people.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '7', text: '부서원이 없습니다.' })]));
   for (const p of people) {
     const d = deptById(p.departmentId);
     const cb = h('input', { type: 'checkbox', checked: S.personSelected.has(p.id), 'aria-label': `${p.name} 선택` });
@@ -1174,10 +1211,15 @@ function renderPeopleAdmin() {
     const tr = h('tr', { class: S.personSelected.has(p.id) ? 'selected' : '' }, [
       h('td', {}, [cb]),
       h('td', {}, [h('span', { class: 'dot', style: { background: deptColor(p.departmentId), marginRight: '6px' } }), p.name]),
-      h('td', { text: d ? d.name : '-' }),
+      h('td', {}, [inlineDeptSelect(p)]),
       h('td', { text: POSITIONS[p.position] || '부서원' }),
       h('td', { text: p.account ? p.account.loginId : '-' }),
       h('td', {}, [accountBadge(p.account)]),
+      h('td', { class: 'col-actions' }, [h('button', {
+        type: 'button', class: 'btn btn-mini btn-ghost', title: p.account ? '비밀번호 변경' : '계정을 만들고 비밀번호 지정',
+        'aria-label': `${p.name} 비밀번호 변경`,
+        onclick: (ev) => { ev.stopPropagation(); openPasswordDialog(p); },
+      }, [icon('key'), p.account ? '변경' : '지정'])]),
     ]);
     tr.addEventListener('click', toggle);
     body.append(tr);
@@ -1223,10 +1265,9 @@ function renderRelAdmin() {
   }
   renderStatusRadios($('admin-rel-status'), 'admin-status');
 
-  const q = S.adminRelFilter.trim().toLowerCase();
   const rows = S.data.relationships
+    .filter(adminRelMatches)
     .map((r) => ({ r, an: personName(r.a), bn: personName(r.b) }))
-    .filter((x) => !q || x.an.toLowerCase().includes(q) || x.bn.toLowerCase().includes(q))
     .sort((x, y) => collator.compare(x.an, y.an) || collator.compare(x.bn, y.bn));
   $('admin-rel-count').textContent = `${rows.length} / 전체 ${S.data.relationships.length}개`;
   const body = clear($('admin-rel-table'));
@@ -1257,6 +1298,13 @@ function renderRelAdmin() {
     body.append(tr);
   }
   updateRelAdminButtons();
+}
+
+/** 관계 관리 탭 필터: 이름 + 상태 */
+function adminRelMatches(r) {
+  const q = S.adminRelFilter.trim().toLowerCase();
+  if (S.adminRelStatus && r.status !== S.adminRelStatus) return false;
+  return !q || personName(r.a).toLowerCase().includes(q) || personName(r.b).toLowerCase().includes(q);
 }
 
 function updateRelAdminButtons() {
@@ -1912,14 +1960,24 @@ function bind() {
   $('person-create-form').addEventListener('submit', safe(async (e) => {
     e.preventDefault();
     const loginId = $('person-create-login').value.trim().toLowerCase();
+    const password = $('person-create-password').value;
+    if (password && !loginId) { toast('비밀번호를 지정하려면 로그인 ID도 입력하세요.', true); return; }
+    if (password && (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password))) {
+      toast('비밀번호는 8자 이상이며 영문과 숫자를 모두 포함해야 합니다.', true);
+      return;
+    }
     const res = await mutate('person_create', teamBody({
       name: $('person-create-name').value,
       departmentId: $('person-create-dept').value,
       position: $('person-create-position').value,
       loginId: loginId || undefined,
-    }), { success: '부서원을 추가했습니다.' });
+      password: password || undefined,
+      mustChangePassword: password ? $('person-create-mustchange').checked : undefined,
+    }), { success: password ? '부서원을 추가하고 지정한 비밀번호로 계정을 만들었습니다.' : '부서원을 추가했습니다.' });
     $('person-create-name').value = '';
     $('person-create-login').value = '';
+    $('person-create-password').value = '';
+    $('person-create-mustchange').checked = false;
     $('person-create-position').value = 'member';
     if (res.tempPassword) showTempPassword(res.loginId, res.tempPassword);
   }));
@@ -1999,14 +2057,13 @@ function bind() {
   $('admin-rel-a').addEventListener('change', syncAdminRelStatus);
   $('admin-rel-b').addEventListener('change', syncAdminRelStatus);
   $('admin-rel-filter').addEventListener('input', (e) => { S.adminRelFilter = e.target.value; renderRelAdmin(); applyHighlight(); });
+  $('admin-rel-status-filter').addEventListener('change', (e) => { S.adminRelStatus = e.target.value; S.relSelected.clear(); renderRelAdmin(); });
+  $('my-rel-status-filter').addEventListener('change', (e) => { S.myRelStatus = e.target.value; S.mySelected.clear(); renderMyPanel(); });
   $('rel-check-all').addEventListener('change', (e) => {
     S.relSelected.clear();
     if (e.target.checked) {
-      // 현재 필터로 보이는 행만 선택
-      const q = S.adminRelFilter.trim().toLowerCase();
-      for (const r of S.data.relationships) {
-        if (!q || personName(r.a).toLowerCase().includes(q) || personName(r.b).toLowerCase().includes(q)) S.relSelected.add(r.id);
-      }
+      // 현재 필터(이름·상태)로 보이는 행만 선택
+      for (const r of S.data.relationships.filter(adminRelMatches)) S.relSelected.add(r.id);
     }
     renderRelAdmin();
   });
@@ -2051,6 +2108,30 @@ function bind() {
   ));
   $('bulk-dialog').addEventListener('cancel', (e) => e.preventDefault());
   $('history-close').addEventListener('click', () => closeDialog($('history-dialog')));
+
+  // 관리자: 부서원 비밀번호 지정
+  $('pw-set-cancel').addEventListener('click', () => closeDialog($('pw-set-dialog')));
+  $('pw-set-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('pw-set-error');
+    err.textContent = '';
+    const pw = $('pw-set-password').value;
+    if (pw !== $('pw-set-confirm').value) { err.textContent = '새 비밀번호가 일치하지 않습니다.'; return; }
+    if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) { err.textContent = '8자 이상, 영문과 숫자를 모두 포함해야 합니다.'; return; }
+    const login = $('pw-set-login').value.trim().toLowerCase();
+    try {
+      const res = await mutate('account_set_password', teamBody({
+        personId: $('pw-set-dialog').dataset.personId,
+        password: pw,
+        mustChangePassword: $('pw-set-mustchange').checked,
+        loginId: login || undefined,
+      }));
+      closeDialog($('pw-set-dialog'));
+      toast(res.created ? `계정(${res.loginId})을 만들고 비밀번호를 지정했습니다.` : `${res.loginId}의 비밀번호를 변경했습니다.`);
+    } catch (ex) {
+      err.textContent = ex.message;
+    }
+  });
 
   // 관리자 계정
   $('admin-create-form').addEventListener('submit', safe(async (e) => {

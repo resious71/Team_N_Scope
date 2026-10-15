@@ -133,9 +133,9 @@ check('팀 생성', $r['status'] === 200 && $teamId !== '');
 check('팀 이름 중복 409', $admin->call('team_create', ['name' => '개발1팀'])['status'] === 409);
 $r = $admin->call('department_create', ['teamId' => $teamId, 'name' => '개발']);
 $deptId = $r['data']['department']['id'] ?? '';
-check('부서 생성 + 첫 팔레트 색 배정', ($r['data']['department']['color'] ?? '') === '#52C0A1');
+check('부서 생성 + 첫 팔레트 색 배정', ($r['data']['department']['color'] ?? '') === '#8FD6C2');
 $r2 = $admin->call('department_create', ['teamId' => $teamId, 'name' => '기획']);
-check('두 번째 부서는 다음 색', ($r2['data']['department']['color'] ?? '') === '#FF9A56');
+check('두 번째 부서는 다음 색', ($r2['data']['department']['color'] ?? '') === '#FFC49B');
 $dept2 = $r2['data']['department']['id'];
 
 $r = $admin->call('person_create', ['teamId' => $teamId, 'name' => '김민수', 'departmentId' => $deptId, 'loginId' => 'minsu.kim']);
@@ -150,6 +150,26 @@ $p4 = $admin->call('person_create', ['teamId' => $teamId, 'name' => '최유진',
 check('같은 이름 부서원 409', $admin->call('person_create', ['teamId' => $teamId, 'name' => '김민수', 'departmentId' => $deptId])['status'] === 409);
 check('로그인 ID 중복 409', $admin->call('person_create', ['teamId' => $teamId, 'name' => '새사람', 'departmentId' => $deptId, 'loginId' => 'MINSU.KIM'])['status'] === 409);
 check('소속 인원이 있는 부서 삭제 409', $admin->call('department_delete', ['teamId' => $teamId, 'departmentIds' => [$deptId]])['status'] === 409);
+
+// 관리자가 비밀번호 지정
+$r = $admin->call('person_create', ['teamId' => $teamId, 'name' => '비번지정', 'departmentId' => $deptId, 'loginId' => 'pw.set', 'password' => 'short']);
+check('지정 비밀번호도 정책 검사 (400)', $r['status'] === 400);
+check('로그인 ID 없이 비밀번호만 지정 시 400', $admin->call('person_create', ['teamId' => $teamId, 'name' => '비번지정', 'departmentId' => $deptId, 'password' => 'Given1234'])['status'] === 400);
+$r = $admin->call('person_create', ['teamId' => $teamId, 'name' => '비번지정', 'departmentId' => $deptId, 'loginId' => 'pw.set', 'password' => 'Given1234']);
+check('비밀번호를 지정해 계정 발급 (임시 비밀번호 없음)', $r['status'] === 200 && $r['data']['tempPassword'] === null);
+$pwPerson = $r['data']['person']['id'];
+$pwClient = new Client($base);
+$r = $pwClient->login('pw.set', 'Given1234');
+check('지정한 비밀번호로 로그인, 변경 강제 없음', $r['status'] === 200 && $r['data']['user']['mustChangePassword'] === false);
+check('부서원 목록에서 비밀번호 변경', $admin->call('account_set_password', ['teamId' => $teamId, 'personId' => $pwPerson, 'password' => 'Changed99'])['status'] === 200);
+check('바뀐 비밀번호로 로그인', (new Client($base))->login('pw.set', 'Changed99')['status'] === 200);
+check('부서원은 비밀번호 지정 API 403', $pwClient->call('account_set_password', ['teamId' => $teamId, 'personId' => $pwPerson, 'password' => 'Hacked999'])['status'] === 403);
+$noAcc = $admin->call('person_create', ['teamId' => $teamId, 'name' => '계정없음', 'departmentId' => $deptId])['data']['person']['id'];
+check('계정 없는 사람은 로그인 ID 없이 비밀번호 지정 시 400', $admin->call('account_set_password', ['teamId' => $teamId, 'personId' => $noAcc, 'password' => 'NewPass11'])['status'] === 400);
+$r = $admin->call('account_set_password', ['teamId' => $teamId, 'personId' => $noAcc, 'password' => 'NewPass11', 'loginId' => 'no.acc', 'mustChangePassword' => true]);
+check('계정 없는 사람에게 계정 만들며 비밀번호 지정', $r['status'] === 200 && $r['data']['created'] === true);
+check('변경 요구 옵션 적용', (new Client($base))->login('no.acc', 'NewPass11')['data']['user']['mustChangePassword'] === true);
+$admin->call('person_delete', ['teamId' => $teamId, 'personIds' => [$pwPerson, $noAcc]]);
 
 // 인원 한도
 check('현재 인원보다 낮은 한도 409', $admin->call('team_update', ['teamId' => $teamId, 'maxMembers' => 3])['status'] === 409);
@@ -337,12 +357,16 @@ $dup = $export;
 $dup['relationships'][] = ['a' => $export['relationships'][0]['b'], 'b' => $export['relationships'][0]['a'], 'status' => 'social'];
 check('중복 쌍 거부', $admin->call('team_import', ['data' => $dup, 'name' => '중복팀'])['status'] === 400);
 check('실패한 가져오기는 저장되지 않음', count($admin->call('teams')['data']['teams']) === 3);
+// 예전 색상표 색(#52C0A1)으로 만든 파일도 새 파스텔 색으로 바꿔 가져온다
 $big = ['schemaVersion' => 1, 'departments' => [['id' => 'd1', 'name' => 'A', 'color' => '#52C0A1']], 'people' => [], 'relationships' => []];
 for ($i = 0; $i < 35; $i++) {
     $big['people'][] = ['id' => "p{$i}", 'name' => "사람{$i}", 'departmentId' => 'd1'];
 }
 check('30명 초과 파일은 maxMembers 없으면 거부', $admin->call('team_import', ['data' => $big, 'name' => '대형팀'])['status'] === 409);
-check('maxMembers 지정 시 가져오기', $admin->call('team_import', ['data' => $big, 'name' => '대형팀', 'maxMembers' => 40])['status'] === 200);
+$r = $admin->call('team_import', ['data' => $big, 'name' => '대형팀', 'maxMembers' => 40]);
+check('maxMembers 지정 시 가져오기', $r['status'] === 200);
+check('예전 색상은 새 파스텔 색으로 변환', $admin->call('team_data', null, ['teamId' => $r['data']['team']['id']])['data']['departments'][0]['color'] === '#8FD6C2');
+check('색상표 16색', count($admin->call('me')['data']['palette']) === 16);
 
 $log = $admin->call('audit_log')['data']['entries'];
 $actions = array_column($log, 'action');

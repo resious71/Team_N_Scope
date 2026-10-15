@@ -161,6 +161,12 @@
               </form>
               <div class="list-toolbar">
                 <input type="search" id="my-rel-filter" placeholder="이름 검색" aria-label="관계 검색">
+                <select id="my-rel-status-filter" aria-label="상태로 거르기">
+                  <option value="">모든 상태</option>
+                  <option value="private">사적</option>
+                  <option value="public">공적</option>
+                  <option value="social">사회적</option>
+                </select>
                 <span id="my-rel-count" class="muted"></span>
                 <button type="button" id="my-rel-delete" class="btn btn-danger btn-mini" disabled>항목 삭제</button>
               </div>
@@ -254,7 +260,7 @@
         <!-- 부서 관리 -->
         <div class="sub-panel" data-sub="depts" hidden>
           <p class="muted no-team-msg">먼저 팀을 선택하거나 만드세요.</p>
-          <div class="admin-grid needs-team">
+          <div class="admin-grid equal needs-team">
             <form id="dept-create-form" class="card">
               <h3>부서 추가</h3>
               <label>부서명<input id="dept-create-name" maxlength="20" required></label>
@@ -283,13 +289,15 @@
         <!-- 부서원 관리 -->
         <div class="sub-panel" data-sub="people" hidden>
           <p class="muted no-team-msg">먼저 팀을 선택하거나 만드세요.</p>
-          <div class="admin-grid needs-team">
+          <div class="admin-grid equal needs-team">
             <form id="person-create-form" class="card">
               <h3>부서원 추가</h3>
               <label>이름<input id="person-create-name" maxlength="20" required></label>
               <label>부서<select id="person-create-dept" required></select></label>
               <label>직급<select id="person-create-position" class="position-select"></select></label>
               <label>로그인 ID (선택 — 입력하면 계정도 발급)<input id="person-create-login" maxlength="20" autocomplete="off" pattern="[a-z0-9_.\-]{4,20}"></label>
+              <label>비밀번호 (선택 — 비우면 임시 비밀번호 발급)<input id="person-create-password" type="password" autocomplete="new-password" maxlength="72" placeholder="8자 이상, 영문+숫자"></label>
+              <label class="check"><input type="checkbox" id="person-create-mustchange"> 첫 로그인 때 비밀번호 변경 요구</label>
               <p id="person-limit-msg" class="warn" hidden>인원 한도에 도달했습니다. 팀 관리에서 한도를 변경할 수 있습니다.</p>
               <div class="row-end"><button type="submit" id="person-create-btn" class="btn btn-primary">추가</button></div>
             </form>
@@ -332,7 +340,7 @@
               <button type="button" id="person-delete" class="btn btn-danger btn-sm" disabled>선택 삭제</button>
             </div>
             <table class="table selectable">
-              <thead><tr><th class="col-check"><input type="checkbox" id="person-check-all" aria-label="전체 선택"></th><th>이름</th><th>부서</th><th>직급</th><th>로그인 ID</th><th>계정</th></tr></thead>
+              <thead><tr><th class="col-check"><input type="checkbox" id="person-check-all" aria-label="전체 선택"></th><th>이름</th><th>부서</th><th>직급</th><th>로그인 ID</th><th>계정</th><th class="col-actions">비밀번호</th></tr></thead>
               <tbody id="person-table"></tbody>
             </table>
           </div>
@@ -354,6 +362,12 @@
           <div class="card needs-team">
             <div class="list-toolbar">
               <input type="search" id="admin-rel-filter" placeholder="이름 검색 (관계도에서 강조)" aria-label="관계 검색">
+              <select id="admin-rel-status-filter" aria-label="상태로 거르기">
+                <option value="">모든 상태</option>
+                <option value="private">사적 (긍정 +1)</option>
+                <option value="public">공적 (중립 0)</option>
+                <option value="social">사회적 (부정 -1)</option>
+              </select>
               <span id="admin-rel-count" class="muted"></span>
               <span class="spacer"></span>
               <select id="admin-rel-bulk-status" aria-label="선택 항목 상태 변경">
@@ -464,6 +478,25 @@
   </div>
 
   <!-- 임시 비밀번호 1회 표시 -->
+  <!-- 관리자: 부서원 비밀번호 지정 -->
+  <dialog id="pw-set-dialog" class="card">
+    <form id="pw-set-form" method="dialog">
+      <h3><span class="icon" data-icon="key" aria-hidden="true"></span>비밀번호 변경 · <span id="pw-set-name"></span></h3>
+      <p id="pw-set-info" class="hint"></p>
+      <label id="pw-set-login-label">로그인 ID (계정이 없어 새로 만듭니다)<input id="pw-set-login" maxlength="20" autocomplete="off"></label>
+      <input type="text" id="pw-set-username" autocomplete="username" hidden>
+      <label>새 비밀번호<input id="pw-set-password" type="password" autocomplete="new-password" maxlength="72" required></label>
+      <label>새 비밀번호 확인<input id="pw-set-confirm" type="password" autocomplete="new-password" maxlength="72" required></label>
+      <p class="hint">8자 이상, 영문과 숫자를 모두 포함해야 합니다. 로그인 잠금도 함께 해제됩니다.</p>
+      <label class="check"><input type="checkbox" id="pw-set-mustchange"> 다음 로그인 때 비밀번호 변경 요구</label>
+      <p id="pw-set-error" class="form-error" role="alert"></p>
+      <div class="row-end">
+        <button type="button" id="pw-set-cancel" class="btn btn-sm">취소</button>
+        <button type="submit" class="btn btn-primary btn-sm">변경</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="temp-pw-dialog" class="card">
     <h3>임시 비밀번호</h3>
     <p>아래 비밀번호는 <strong>지금 한 번만</strong> 표시됩니다. 부서원에게 안전하게 전달하세요. 최초 로그인 시 변경해야 합니다.</p>
