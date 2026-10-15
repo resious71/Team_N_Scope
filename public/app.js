@@ -16,6 +16,8 @@ const STATUS = {
   social: { label: '사회적', meaning: '부정', score: -1, text: '사회적 (부정 -1)' },
 };
 const STATUS_KEYS = Object.keys(STATUS);
+const POSITIONS = { leader: '팀장', head: '부서장', member: '부서원' };
+const VIEW_SCOPES = { team: '팀', dept: '부서', person: '부서원' };
 
 const AUDIT_LABELS = {
   login: '로그인', login_failed: '로그인 실패', login_locked: '잠금 상태 로그인 시도', login_inactive: '비활성 계정 로그인 시도',
@@ -54,6 +56,7 @@ const S = {
   personSelected: new Set(),
   relSelected: new Set(),
   deptEditColor: null,
+  view: null,        // 관계도 표시 범위 { scope: team|dept|person, deptId, personId }
 };
 
 const $ = (id) => document.getElementById(id);
@@ -432,6 +435,114 @@ function computeRanking(people) {
 // ---------------------------------------------------------------------------
 // 렌더링
 // ---------------------------------------------------------------------------
+// ---- 직급·권한 (서버도 같은 규칙으로 검사) -------------------------------------
+function myPosition() {
+  if (isAdmin()) return 'admin';
+  return (S.data && S.data.me && S.data.me.position) || 'member';
+}
+
+function myDeptId() {
+  return S.data && S.data.me ? S.data.me.departmentId : null;
+}
+
+/** 관리자·팀장은 팀 전체를, 부서장·부서원은 자기 부서만 볼 수 있다. */
+function canViewWholeTeam() {
+  return ['admin', 'leader'].includes(myPosition());
+}
+
+function allowedDepts() {
+  if (!S.data) return [];
+  return canViewWholeTeam() ? S.data.departments : S.data.departments.filter((d) => d.id === myDeptId());
+}
+
+function allowedViewPeople() {
+  return orderedPeople().filter((p) => canViewWholeTeam() || p.departmentId === myDeptId());
+}
+
+/** 팀장: 팀 전체 / 부서장: 한쪽이 자기 부서원 / 부서원: 본인 관계 */
+function canManagePair(a, b) {
+  const pos = myPosition();
+  if (pos === 'admin' || pos === 'leader') return true;
+  if (pos === 'head') {
+    const pa = personById(a);
+    const pb = personById(b);
+    return (pa && pa.departmentId === myDeptId()) || (pb && pb.departmentId === myDeptId());
+  }
+  return a === myPersonId() || b === myPersonId();
+}
+
+/** 관계 관리 카드에서 "당사자"로 고를 수 있는 사람 */
+function partyACandidates() {
+  const pos = myPosition();
+  const people = orderedPeople();
+  if (pos === 'leader') return people;
+  if (pos === 'head') return people.filter((p) => p.departmentId === myDeptId());
+  return people.filter((p) => p.id === myPersonId());
+}
+
+// ---- 관계도 표시 범위 필터 (부서원 정보 카드의 부서 선택과 동기화) ----------------
+function allowedScopes() {
+  return canViewWholeTeam() ? ['team', 'dept', 'person'] : ['dept', 'person'];
+}
+
+function normalizeView() {
+  if (!S.data) return;
+  const v = S.view || {};
+  const scopes = allowedScopes();
+  if (!scopes.includes(v.scope)) v.scope = scopes[0];
+  const depts = allowedDepts();
+  if (!depts.some((d) => d.id === v.deptId)) {
+    v.deptId = depts.some((d) => d.id === S.infoDeptId) ? S.infoDeptId : (depts[0] ? depts[0].id : null);
+  }
+  const people = allowedViewPeople();
+  if (!people.some((p) => p.id === v.personId)) {
+    const me = people.find((p) => p.id === myPersonId());
+    v.personId = me ? me.id : (people[0] ? people[0].id : null);
+  }
+  S.view = v;
+  // 부서원 정보 카드와 동기화
+  if (v.scope === 'dept') S.infoDeptId = v.deptId;
+  if (v.scope === 'person' && personById(v.personId)) S.infoDeptId = personById(v.personId).departmentId;
+  if (!depts.some((d) => d.id === S.infoDeptId)) S.infoDeptId = v.deptId;
+}
+
+/** 선택한 범위에 보일 노드·엣지 */
+function visibleGraph() {
+  const v = S.view;
+  const all = orderedPeople();
+  const rels = S.data.relationships;
+  if (!v || v.scope === 'team') return { people: all, rels };
+  if (v.scope === 'dept') {
+    const ids = new Set(all.filter((p) => p.departmentId === v.deptId).map((p) => p.id));
+    return { people: all.filter((p) => ids.has(p.id)), rels: rels.filter((r) => ids.has(r.a) && ids.has(r.b)) };
+  }
+  const mine = rels.filter((r) => r.a === v.personId || r.b === v.personId);
+  const ids = new Set([v.personId, ...mine.map((r) => otherOf(r, v.personId))]);
+  return { people: all.filter((p) => ids.has(p.id)), rels: mine };
+}
+
+function renderViewFilter() {
+  const v = S.view;
+  const scopeSel = clear($('view-scope'));
+  for (const k of allowedScopes()) scopeSel.append(h('option', { value: k, text: VIEW_SCOPES[k] }));
+  scopeSel.value = v ? v.scope : '';
+  const deptSel = clear($('view-dept'));
+  for (const d of allowedDepts()) deptSel.append(h('option', { value: d.id, text: d.name }));
+  deptSel.value = v && v.deptId ? v.deptId : '';
+  deptSel.hidden = !v || v.scope !== 'dept';
+  const personSel = clear($('view-person'));
+  for (const p of allowedViewPeople()) personSel.append(h('option', { value: p.id, text: personLabel(p) }));
+  personSel.value = v && v.personId ? v.personId : '';
+  personSel.hidden = !v || v.scope !== 'person';
+}
+
+function onViewChange() {
+  normalizeView();
+  renderViewFilter();
+  renderChart();
+  renderDeptInfo();
+}
+
 /** 좌우로 나란히 있을 때 오른쪽 열의 아래를 왼쪽 마지막 카드(관계 상태)의 아래와 맞춘다. */
 function alignSideColumn() {
   const left = document.querySelector('.chart-column');
@@ -446,6 +557,12 @@ function renderAll() {
   $('no-team-guide').hidden = !(noTeam && isAdmin());
   $('diagram-layout').hidden = noTeam;
   pruneSelections();
+  if (S.data && !isAdmin()) {
+    const pos = myPosition();
+    $('user-label').textContent = `${S.me.name} (${POSITIONS[pos] || '부서원'})`;
+  }
+  normalizeView();
+  renderViewFilter();
   renderChart();
   renderLegend();
   renderSidePanels();
@@ -512,11 +629,15 @@ function renderChart() {
   svg.selectAll('*').remove();
   applyZoom();
   const empty = $('chart-empty');
-  const people = orderedPeople();
+  const graph = S.data ? visibleGraph() : { people: [], rels: [] };
+  const people = graph.people;
   if (!S.data || !people.length) {
-    empty.textContent = isAdmin()
-      ? '등록된 부서원이 없습니다. 관리자 탭의 부서원 관리에서 부서원을 추가하세요.'
-      : '등록된 부서원이 없습니다.';
+    const noOne = !S.data || !S.data.people.length;
+    empty.textContent = !noOne
+      ? '선택한 범위에 표시할 부서원이 없습니다.'
+      : isAdmin()
+        ? '등록된 부서원이 없습니다. 관리자 탭의 부서원 관리에서 부서원을 추가하세요.'
+        : '등록된 부서원이 없습니다.';
     empty.hidden = !S.data;
     return;
   }
@@ -529,7 +650,7 @@ function renderChart() {
 
   const pos = layoutNodes(people);
   const me = myPersonId();
-  const rels = S.data.relationships.filter((r) => S.statusFilter[r.status] && pos.has(r.a) && pos.has(r.b));
+  const rels = graph.rels.filter((r) => S.statusFilter[r.status] && pos.has(r.a) && pos.has(r.b));
 
   const edges = svg.append('g').attr('class', 'edges')
     .selectAll('g').data(rels, (r) => r.id).join('g')
@@ -695,31 +816,44 @@ function getRadio(fieldset) {
 
 function renderMyPanel() {
   const me = myPersonId();
+  const pos = myPosition();
   $('my-score').textContent = `내 점수 ${fmtScore(S.data.me ? S.data.me.score : 0)}`;
-  const others = orderedPeople().filter((p) => p.id !== me);
-  const alone = others.length === 0;
+  $('my-rel-scope').textContent = pos === 'leader' ? '· 팀 전체' : pos === 'head' ? '· 우리 부서원' : '· 내 관계';
+  const alone = S.data.people.length < 2;
   $('my-alone').hidden = !alone;
   $('my-rel-form').hidden = alone;
 
-  const sel = $('my-rel-other');
-  const prev = sel.value;
-  clear(sel).append(h('option', { value: '', text: '상대 선택' }));
-  for (const p of others) sel.append(h('option', { value: p.id, text: personLabel(p) }));
-  sel.value = others.some((p) => p.id === prev) ? prev : '';
+  // 당사자(A): 부서원은 본인 고정, 부서장은 자기 부서원, 팀장은 전체
+  const selA = $('my-rel-a');
+  const prevA = selA.value;
+  const cands = partyACandidates();
+  clear(selA);
+  for (const p of cands) selA.append(h('option', { value: p.id, text: p.id === me ? `나 (${p.name})` : personLabel(p) }));
+  selA.value = cands.some((p) => p.id === prevA) ? prevA : (cands.some((p) => p.id === me) ? me : (cands[0] ? cands[0].id : ''));
+  selA.disabled = cands.length <= 1;
+  renderPartyB();
   renderStatusRadios($('my-rel-status'), 'my-status');
   syncMyForm(false);
 
+  const manageable = S.data.relationships.filter((r) => canManagePair(r.a, r.b));
   const mine = myRelationships();
-  $('my-rel-count').textContent = `입력한 관계 ${mine.length} / 최대 ${Math.max(S.data.people.length - 1, 0)}`;
+  $('my-rel-count').textContent = pos === 'member'
+    ? `입력한 관계 ${mine.length} / 최대 ${Math.max(S.data.people.length - 1, 0)}`
+    : `관리 가능한 관계 ${manageable.length}개`;
   const q = S.myRelFilter.trim().toLowerCase();
-  const rows = mine
-    .map((r) => ({ r, other: personById(otherOf(r, me)) }))
-    .filter((x) => x.other && (!q || x.other.name.toLowerCase().includes(q)))
-    .sort((x, y) => collator.compare(x.other.name, y.other.name));
+  const rows = manageable
+    .map((r) => {
+      const involvesMe = r.a === me || r.b === me;
+      const first = involvesMe ? me : r.a;
+      const second = otherOf(r, first);
+      return { r, first, second, label: involvesMe ? `나 ↔ ${personName(second)}` : `${personName(first)} ↔ ${personName(second)}` };
+    })
+    .filter((x) => !q || personName(x.first).toLowerCase().includes(q) || personName(x.second).toLowerCase().includes(q))
+    .sort((x, y) => collator.compare(x.label, y.label));
   const list = clear($('my-rel-list'));
-  if (!rows.length) list.append(h('li', { class: 'empty', text: mine.length ? '검색 결과가 없습니다.' : '아직 입력한 관계가 없습니다.' }));
-  for (const { r, other } of rows) {
-    const cb = h('input', { type: 'checkbox', checked: S.mySelected.has(r.id), 'aria-label': `${other.name} 선택` });
+  if (!rows.length) list.append(h('li', { class: 'empty', text: manageable.length ? '검색 결과가 없습니다.' : '아직 입력한 관계가 없습니다.' }));
+  for (const { r, first, second, label } of rows) {
+    const cb = h('input', { type: 'checkbox', checked: S.mySelected.has(r.id), 'aria-label': `${label} 선택` });
     cb.addEventListener('click', (e) => e.stopPropagation());
     cb.addEventListener('change', () => {
       if (cb.checked) S.mySelected.add(r.id); else S.mySelected.delete(r.id);
@@ -727,14 +861,18 @@ function renderMyPanel() {
       $('my-rel-delete').disabled = S.mySelected.size === 0;
     });
     const pick = () => {
-      sel.value = other.id;
+      const aOk = [...selA.options].some((o) => o.value === first);
+      selA.value = aOk ? first : second;
+      renderPartyB();
+      $('my-rel-other').value = aOk ? second : first;
       syncMyForm(true);
-      sel.focus();
+      $('my-rel-other').focus();
     };
+    const other = personById(second);
     const li = h('li', { class: S.mySelected.has(r.id) ? 'selected' : '', tabindex: '0', title: '클릭하면 상태를 수정할 수 있습니다' }, [
       cb,
-      h('span', { class: 'dot', style: { background: deptColor(other.departmentId) } }),
-      h('span', { class: 'grow', text: `나 ↔ ${other.name}` }),
+      h('span', { class: 'dot', style: { background: deptColor(other ? other.departmentId : '') } }),
+      h('span', { class: 'grow', text: label }),
       h('span', { class: `status-chip ${r.status}`, text: STATUS[r.status].label }),
     ]);
     li.addEventListener('click', pick);
@@ -744,11 +882,22 @@ function renderMyPanel() {
   $('my-rel-delete').disabled = S.mySelected.size === 0;
 }
 
-/** 이미 관계가 있는 상대를 고르면 현재 상태를 표시하고 버튼을 "수정"으로 */
+/** 상대(B) 목록: 당사자(A)를 뺀 팀 전원 */
+function renderPartyB() {
+  const a = $('my-rel-a').value;
+  const sel = $('my-rel-other');
+  const prev = sel.value;
+  const others = orderedPeople().filter((p) => p.id !== a);
+  clear(sel).append(h('option', { value: '', text: '상대 선택' }));
+  for (const p of others) sel.append(h('option', { value: p.id, text: personLabel(p) }));
+  sel.value = others.some((p) => p.id === prev) ? prev : '';
+}
+
+/** 이미 관계가 있는 쌍을 고르면 현재 상태를 표시하고 버튼을 "수정"으로 */
 function syncMyForm(fromUser) {
-  const other = $('my-rel-other').value;
-  const me = myPersonId();
-  const rel = other && S.data.relationships.find((r) => r.id === relId(me, other));
+  const a = $('my-rel-a').value;
+  const b = $('my-rel-other').value;
+  const rel = a && b && S.data.relationships.find((r) => r.id === relId(a, b));
   if (rel) setRadio($('my-rel-status'), rel.status);
   else if (fromUser) setRadio($('my-rel-status'), null);
   $('my-rel-save').textContent = rel ? '수정' : '저장';
@@ -760,7 +909,7 @@ function relId(a, b) {
 
 function renderDeptInfo() {
   const sel = $('info-dept');
-  const depts = S.data.departments;
+  const depts = allowedDepts();
   if (!depts.some((d) => d.id === S.infoDeptId)) S.infoDeptId = depts[0] ? depts[0].id : null;
   clear(sel);
   if (!depts.length) sel.append(h('option', { value: '', text: '부서 없음' }));
@@ -868,6 +1017,12 @@ function renderDeptAdmin() {
     delete $('dept-edit-form').dataset.id;
   }
 
+  for (const sel of document.querySelectorAll('.position-select')) {
+    if (!sel.options.length) {
+      for (const [k, v] of Object.entries(POSITIONS)) sel.append(h('option', { value: k, text: v }));
+      sel.value = 'member';
+    }
+  }
   for (const sel of [$('person-create-dept'), $('person-edit-dept')]) {
     const prev = sel.value;
     clear(sel);
@@ -910,7 +1065,7 @@ function renderPeopleAdmin() {
 
   const body = clear($('person-table'));
   const people = orderedPeople();
-  if (!people.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '5', text: '부서원이 없습니다.' })]));
+  if (!people.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '6', text: '부서원이 없습니다.' })]));
   for (const p of people) {
     const d = deptById(p.departmentId);
     const cb = h('input', { type: 'checkbox', checked: S.personSelected.has(p.id), 'aria-label': `${p.name} 선택` });
@@ -924,6 +1079,7 @@ function renderPeopleAdmin() {
       h('td', {}, [cb]),
       h('td', {}, [h('span', { class: 'dot', style: { background: deptColor(p.departmentId), marginRight: '6px' } }), p.name]),
       h('td', { text: d ? d.name : '-' }),
+      h('td', { text: POSITIONS[p.position] || '부서원' }),
       h('td', { text: p.account ? p.account.loginId : '-' }),
       h('td', {}, [accountBadge(p.account)]),
     ]);
@@ -945,6 +1101,7 @@ function renderPeopleAdmin() {
     $('person-edit-form').dataset.id = one.id;
     $('person-edit-name').value = one.name;
     $('person-edit-dept').value = one.departmentId;
+    $('person-edit-position').value = one.position || 'member';
     $('person-account-login').value = '';
   }
   const acc = one.account;
@@ -1123,6 +1280,7 @@ function bind() {
   $('team-select').addEventListener('change', safe(async (e) => {
     S.teamId = e.target.value || null;
     S.mySelected.clear(); S.deptSelected.clear(); S.personSelected.clear(); S.relSelected.clear();
+    S.view = null;
     if (S.teamId) await api('team_select', { method: 'POST', body: { teamId: S.teamId } }).catch(() => {});
     await loadTeamData();
   }));
@@ -1135,17 +1293,29 @@ function bind() {
   // 관계도 조작
   $('person-search').addEventListener('input', (e) => { S.searchText = e.target.value; applyHighlight(); });
   $('zoom-slider').addEventListener('input', (e) => { S.zoom = Number(e.target.value); applyZoom(); });
-  $('info-dept').addEventListener('change', (e) => { S.infoDeptId = e.target.value; renderDeptInfo(); });
+  // 부서원 정보의 부서 선택 → 관계도 필터를 해당 부서로 동기화
+  $('info-dept').addEventListener('change', (e) => {
+    S.infoDeptId = e.target.value;
+    S.view = { ...S.view, scope: 'dept', deptId: e.target.value };
+    onViewChange();
+  });
+  $('view-scope').addEventListener('change', (e) => { S.view = { ...S.view, scope: e.target.value }; onViewChange(); });
+  $('view-dept').addEventListener('change', (e) => { S.view = { ...S.view, deptId: e.target.value }; onViewChange(); });
+  $('view-person').addEventListener('change', (e) => { S.view = { ...S.view, personId: e.target.value }; onViewChange(); });
 
   // 내 관계 (부서원)
+  $('my-rel-a').addEventListener('change', () => { renderPartyB(); syncMyForm(true); });
   $('my-rel-other').addEventListener('change', () => syncMyForm(true));
   $('my-rel-form').addEventListener('submit', safe(async (e) => {
     e.preventDefault();
+    const a = $('my-rel-a').value;
     const otherId = $('my-rel-other').value;
     const status = getRadio($('my-rel-status'));
     if (!otherId) { toast('상대를 선택하세요.', true); return; }
     if (!status) { toast('관계 상태를 선택하세요.', true); return; }
-    const res = await mutate('relationship_upsert', { otherId, status });
+    if (!canManagePair(a, otherId)) { toast('이 관계를 관리할 권한이 없습니다.', true); return; }
+    const body = a === myPersonId() ? { otherId, status } : { a, b: otherId, status };
+    const res = await mutate('relationship_upsert', body);
     toast(res.created ? '관계를 추가했습니다.' : '관계를 수정했습니다.');
   }));
   $('my-rel-filter').addEventListener('input', (e) => { S.myRelFilter = e.target.value; renderMyPanel(); applyHighlight(); });
@@ -1268,17 +1438,24 @@ function bind() {
     const res = await mutate('person_create', teamBody({
       name: $('person-create-name').value,
       departmentId: $('person-create-dept').value,
+      position: $('person-create-position').value,
       loginId: loginId || undefined,
     }), { success: '부서원을 추가했습니다.' });
     $('person-create-name').value = '';
     $('person-create-login').value = '';
+    $('person-create-position').value = 'member';
     if (res.tempPassword) showTempPassword(res.loginId, res.tempPassword);
   }));
   $('person-edit-form').addEventListener('submit', safe(async (e) => {
     e.preventDefault();
     const id = e.target.dataset.id;
     if (!id) return;
-    await mutate('person_update', teamBody({ personId: id, name: $('person-edit-name').value, departmentId: $('person-edit-dept').value }),
+    await mutate('person_update', teamBody({
+      personId: id,
+      name: $('person-edit-name').value,
+      departmentId: $('person-edit-dept').value,
+      position: $('person-edit-position').value,
+    }),
       { success: '부서원 정보를 수정했습니다.' });
     delete e.target.dataset.id;
     renderPeopleAdmin();
@@ -1399,6 +1576,7 @@ async function logout() {
   S.data = null;
   S.teamId = null;
   S.csrf = '';
+  S.view = null;
   showLogin('로그아웃했습니다.');
 }
 

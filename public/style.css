@@ -111,8 +111,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .side-column { flex: 1 1 320px; min-width: 280px; display: flex; flex-direction: column; gap: 10px; }
 
 .chart-card { padding: 10px 12px; }
-.chart-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
-.chart-toolbar input { flex: 1; }
+.chart-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.chart-toolbar input { flex: 1; min-width: 120px; }
+.chart-toolbar select { max-width: 200px; }
 .my-score { font-weight: 600; white-space: nowrap; padding: 4px 10px; border-radius: 999px; background: #eff6ff; }
 .chart-scroll { width: 100%; max-width: 800px; height: 65vh; overflow: hidden; position: relative; margin: 0 auto; }
 .chart-scroll.scrollable { overflow: auto; }
@@ -199,10 +200,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .select-list li.selected { background: #eff6ff; }
 .select-list li .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-list li.empty { color: var(--muted); cursor: default; justify-content: center; }
-.status-chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; color: #fff; white-space: nowrap; }
-.status-chip.private { background: var(--private); }
-.status-chip.public { background: var(--public); }
-.status-chip.social { background: var(--social); }
+/* 관계 상태 표시: 둥근 사각형, 같은 너비, 파스텔 톤 */
+.status-chip {
+  display: inline-block; box-sizing: border-box; min-width: 56px; text-align: center;
+  font-size: 12px; line-height: 1.6; padding: 1px 8px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap;
+}
+.status-chip.private { background: #DBEAFE; border-color: #BFDBFE; color: #1E40AF; }
+.status-chip.public { background: #F3F4F6; border-color: #E5E7EB; color: #374151; }
+.status-chip.social { background: #FEE2E2; border-color: #FECACA; color: #991B1B; }
+.table .status-chip { width: 120px; }
+
+.pair-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pair-row select { flex: 1; min-width: 0; }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.row-between .hint { margin: 0; }
+.scope-note { font-size: 12px; font-weight: 400; }
 
 .ranking { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .rank-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -220,6 +232,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .subtab.active { background: var(--primary); border-color: var(--primary); color: var(--text); font-weight: 600; }
 .sub-panel { display: flex; flex-direction: column; gap: 12px; }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: start; }
+/* 팀 관리: 팀 추가·현재 팀 설정·내보내기/가져오기·현재 팀 삭제 카드 높이 통일 (줄이 바뀌어도 모든 행 같은 높이) */
+.admin-grid.equal { align-items: stretch; grid-auto-rows: 1fr; }
 .danger-zone { border-color: #fecaca; }
 .count-badge { font-size: 13px; font-weight: 600; color: var(--text-2); background: #f3f4f6; padding: 1px 8px; border-radius: 999px; }
 .scroll-list { max-height: calc(100vh - var(--header-h) - var(--tabs-h) - 300px); min-height: 160px; overflow: auto; }

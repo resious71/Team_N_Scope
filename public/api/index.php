@@ -550,6 +550,7 @@ function act_team_data(array $input, array $ctx): array
             }
         }
         $out['people'] = array_map(fn($p) => $p + [
+            'position' => 'member',
             'score' => $scores[$p['id']],
             'account' => $accounts[$p['id']] ?? null,
         ], $team['people']);
@@ -561,17 +562,20 @@ function act_team_data(array $input, array $ctx): array
     }
 
     $me = (string)$ctx['user']['personId'];
+    $mePerson = person_of($team, $me);
     $out['people'] = array_map(fn($p) => [
-        'id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId'],
+        'id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId'], 'position' => position_of($p),
     ], $team['people']);
-    $rels = $team['relationships'];
-    if ($meta['memberViewScope'] !== 'team') {
-        $rels = array_filter($rels, fn($r) => $r['a'] === $me || $r['b'] === $me);
-    }
+    $rels = member_visible_relationships($team, $mePerson, $meta['memberViewScope']);
     $out['relationships'] = array_values(array_map(fn($r) => [
         'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'], 'status' => $r['status'], 'updatedAt' => $r['updatedAt'],
     ], $rels));
-    $out['me'] = ['personId' => $me, 'score' => $scores[$me] ?? 0];
+    $out['me'] = [
+        'personId' => $me,
+        'departmentId' => $mePerson['departmentId'],
+        'position' => position_of($mePerson),
+        'score' => $scores[$me] ?? 0,
+    ];
     return $out;
 }
 
@@ -667,15 +671,16 @@ function act_person_create(array $input, array $ctx): array
     $teamId = resolve_team_id($ctx, $input);
     $name = clean_name($input['name'] ?? null, '이름', 20);
     $deptId = assert_id($input['departmentId'] ?? null, '부서');
+    $position = valid_position($input['position'] ?? 'member');
     $loginRaw = $input['loginId'] ?? '';
     $loginId = (is_string($loginRaw) && trim($loginRaw) !== '') ? clean_login_id($loginRaw) : null;
 
-    $result = with_lock(function () use ($teamId, $name, $deptId, $loginId) {
+    $result = with_lock(function () use ($teamId, $name, $deptId, $position, $loginId) {
         $meta = find_team_meta($teamId);
         if ($loginId !== null && find_user_by_login(load_users(), $loginId) !== null) {
             throw new ApiError(409, '이미 사용 중인 로그인 ID입니다.');
         }
-        $person = mutate_team($teamId, function (array &$team) use ($meta, $name, $deptId) {
+        $person = mutate_team($teamId, function (array &$team) use ($meta, $name, $deptId, $position) {
             if (count($team['people']) >= (int)$meta['maxMembers']) {
                 throw new ApiError(409, '팀 인원 한도(' . $meta['maxMembers'] . '명)에 도달했습니다. 팀 관리에서 한도를 변경할 수 있습니다.');
             }
@@ -687,7 +692,7 @@ function act_person_create(array $input, array $ctx): array
                     throw new ApiError(409, '팀 내에 같은 이름의 부서원이 이미 있습니다.');
                 }
             }
-            $person = ['id' => new_id('p'), 'name' => $name, 'departmentId' => $deptId, 'createdAt' => now_iso()];
+            $person = ['id' => new_id('p'), 'name' => $name, 'departmentId' => $deptId, 'position' => $position, 'createdAt' => now_iso()];
             $team['people'][] = $person;
             return $person;
         });
@@ -711,7 +716,8 @@ function act_person_update(array $input, array $ctx): array
     $id = assert_id($input['personId'] ?? null, '부서원 ID');
     $name = array_key_exists('name', $input) ? clean_name($input['name'], '이름', 20) : null;
     $deptId = array_key_exists('departmentId', $input) ? assert_id($input['departmentId'], '부서') : null;
-    $person = mutate_team($teamId, function (array &$team) use ($id, $name, $deptId) {
+    $position = array_key_exists('position', $input) ? valid_position($input['position']) : null;
+    $person = mutate_team($teamId, function (array &$team) use ($id, $name, $deptId, $position) {
         $i = find_index($team['people'], $id);
         if ($i < 0) {
             throw new ApiError(404, '부서원을 찾을 수 없습니다.');
@@ -730,9 +736,12 @@ function act_person_update(array $input, array $ctx): array
             }
             $team['people'][$i]['departmentId'] = $deptId;
         }
+        if ($position !== null) {
+            $team['people'][$i]['position'] = $position;
+        }
         return $team['people'][$i];
     });
-    audit($ctx['user']['id'], 'person_update', $teamId, $id, $person['name']);
+    audit($ctx['user']['id'], 'person_update', $teamId, $id, $person['name'] . ' (' . POSITIONS[position_of($person)] . ')');
     return ['person' => $person];
 }
 
@@ -849,8 +858,12 @@ function act_relationship_upsert(array $input, array $ctx): array
     if (is_admin($ctx)) {
         $a = assert_id($input['a'] ?? null, '부서원 ID');
         $b = assert_id($input['b'] ?? null, '부서원 ID');
+    } elseif (isset($input['a'], $input['b'])) {
+        // 팀장·부서장이 다른 사람들 사이의 관계를 관리 (권한은 아래에서 직급으로 검사)
+        $a = assert_id($input['a'], '부서원 ID');
+        $b = assert_id($input['b'], '부서원 ID');
     } else {
-        // 본인은 세션에서 결정 — 클라이언트가 지정할 수 없음
+        // 본인 관계: 본인은 세션에서 결정 — 클라이언트가 지정할 수 없음
         $a = (string)$ctx['user']['personId'];
         $b = assert_id($input['otherId'] ?? null, '상대 부서원 ID');
     }
@@ -858,9 +871,13 @@ function act_relationship_upsert(array $input, array $ctx): array
         throw new ApiError(400, '자기 자신과는 관계를 만들 수 없습니다.');
     }
     $uid = $ctx['user']['id'];
-    $res = mutate_team($teamId, function (array &$team) use ($a, $b, $status, $uid) {
+    $mePid = is_admin($ctx) ? null : (string)$ctx['user']['personId'];
+    $res = mutate_team($teamId, function (array &$team) use ($a, $b, $status, $uid, $mePid) {
         if (find_index($team['people'], $a) < 0 || find_index($team['people'], $b) < 0) {
             throw new ApiError(404, '같은 팀의 부서원이 아닙니다.');
+        }
+        if ($mePid !== null && !member_can_manage($team, person_of($team, $mePid), $a, $b)) {
+            throw new ApiError(403, '이 관계를 추가·수정할 권한이 없습니다.');
         }
         $id = relationship_id($a, $b);
         $now = now_iso();
@@ -897,8 +914,8 @@ function act_relationship_delete(array $input, array $ctx): array
             if (!in_array($r['id'], $ids, true)) {
                 continue;
             }
-            if ($me !== null && $r['a'] !== $me && $r['b'] !== $me) {
-                throw new ApiError(403, '본인이 포함된 관계만 삭제할 수 있습니다.');
+            if ($me !== null && !member_can_manage($team, person_of($team, $me), $r['a'], $r['b'])) {
+                throw new ApiError(403, '이 관계를 삭제할 권한이 없습니다.');
             }
             $labels[] = person_name($team, $r['a']) . ' ↔ ' . person_name($team, $r['b']) . " ({$r['status']})";
         }
@@ -947,7 +964,7 @@ function act_team_export(array $input, array $ctx): array
             'maxMembers' => (int)$meta['maxMembers'],
         ],
         'departments' => array_map(fn($d) => ['id' => $d['id'], 'name' => $d['name'], 'color' => $d['color']], $team['departments']),
-        'people' => array_map(fn($p) => ['id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId']], $team['people']),
+        'people' => array_map(fn($p) => ['id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId'], 'position' => position_of($p)], $team['people']),
         'relationships' => array_map(fn($r) => ['a' => $r['a'], 'b' => $r['b'], 'status' => $r['status']], $team['relationships']),
     ];
 }
@@ -1025,8 +1042,9 @@ function act_team_import(array $input, array $ctx): array
         if (!is_string($dept) || !isset($deptMap[$dept])) {
             throw new ApiError(400, "부서원 '{$pname}'의 부서가 존재하지 않습니다.");
         }
+        $position = valid_position($p['position'] ?? 'member');
         $personMap[$oldId] = new_id('p');
-        $people[] = ['id' => $personMap[$oldId], 'name' => $pname, 'departmentId' => $deptMap[$dept], 'createdAt' => $now];
+        $people[] = ['id' => $personMap[$oldId], 'name' => $pname, 'departmentId' => $deptMap[$dept], 'position' => $position, 'createdAt' => $now];
     }
 
     // 인원 한도

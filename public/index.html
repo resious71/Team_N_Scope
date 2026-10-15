@@ -90,6 +90,9 @@
           <div class="chart-column">
             <div class="card chart-card">
               <div class="chart-toolbar">
+                <select id="view-scope" aria-label="표시 범위"></select>
+                <select id="view-dept" aria-label="부서 선택"></select>
+                <select id="view-person" aria-label="부서원 선택"></select>
                 <input type="search" id="person-search" placeholder="이름으로 사람 검색" aria-label="사람 검색">
                 <span id="my-score" class="my-score" hidden></span>
               </div>
@@ -118,31 +121,6 @@
 
           <aside class="side-column">
             <!-- 부서원: 내 관계 -->
-            <div id="panel-my-relations" class="card panel" hidden>
-              <h3>내 관계</h3>
-              <p id="my-alone" class="muted" hidden>팀에 본인만 있어 관계를 추가할 수 없습니다.</p>
-              <form id="my-rel-form" class="rel-form">
-                <label>상대
-                  <select id="my-rel-other" required></select>
-                </label>
-                <fieldset class="status-radios" id="my-rel-status">
-                  <legend class="sr-only">관계 상태</legend>
-                </fieldset>
-                <p class="hint">이 관계는 두 사람의 점수에 모두 반영됩니다.</p>
-                <div class="row-end">
-                  <button type="submit" id="my-rel-save" class="btn btn-primary btn-sm">저장</button>
-                </div>
-              </form>
-              <div class="list-toolbar">
-                <input type="search" id="my-rel-filter" placeholder="이름 검색" aria-label="내 관계 검색">
-                <span id="my-rel-count" class="muted"></span>
-              </div>
-              <ul id="my-rel-list" class="select-list"></ul>
-              <div class="row-end">
-                <button type="button" id="my-rel-delete" class="btn btn-danger btn-mini" disabled>항목 삭제</button>
-              </div>
-            </div>
-
             <!-- 관리자: 순위 -->
             <div id="panel-ranking" class="card panel" hidden>
               <h3>순위</h3>
@@ -156,6 +134,34 @@
               <h3>부서원 정보</h3>
               <select id="info-dept" aria-label="부서 선택"></select>
               <textarea id="info-members" readonly aria-label="부서 소속 인원"></textarea>
+            </div>
+
+            <!-- 부서원: 관계 관리 (부서원=본인 관계, 부서장=자기 부서원 관계, 팀장=팀 전체) -->
+            <div id="panel-my-relations" class="card panel" hidden>
+              <h3>관계 관리 <span id="my-rel-scope" class="muted scope-note"></span></h3>
+              <p id="my-alone" class="muted" hidden>팀에 본인만 있어 관계를 추가할 수 없습니다.</p>
+              <form id="my-rel-form" class="rel-form">
+                <div class="pair-row">
+                  <select id="my-rel-a" aria-label="당사자" required></select>
+                  <span>↔</span>
+                  <select id="my-rel-other" aria-label="상대" required></select>
+                </div>
+                <fieldset class="status-radios" id="my-rel-status">
+                  <legend class="sr-only">관계 상태</legend>
+                </fieldset>
+                <div class="row-between">
+                  <p class="hint">이 관계는 두 사람의 점수에 모두 반영됩니다.</p>
+                  <button type="submit" id="my-rel-save" class="btn btn-primary btn-sm">저장</button>
+                </div>
+              </form>
+              <div class="list-toolbar">
+                <input type="search" id="my-rel-filter" placeholder="이름 검색" aria-label="관계 검색">
+                <span id="my-rel-count" class="muted"></span>
+              </div>
+              <ul id="my-rel-list" class="select-list"></ul>
+              <div class="row-end">
+                <button type="button" id="my-rel-delete" class="btn btn-danger btn-mini" disabled>항목 삭제</button>
+              </div>
             </div>
 
             <div class="card panel panel-stats">
@@ -178,7 +184,7 @@
 
         <!-- 팀 관리 -->
         <div class="sub-panel" data-sub="teams">
-          <div class="admin-grid">
+          <div class="admin-grid equal">
             <form id="team-create-form" class="card">
               <h3>팀 추가</h3>
               <label>팀 이름<input id="team-create-name" maxlength="30" required></label>
@@ -276,6 +282,7 @@
               <h3>부서원 추가</h3>
               <label>이름<input id="person-create-name" maxlength="20" required></label>
               <label>부서<select id="person-create-dept" required></select></label>
+              <label>직급<select id="person-create-position" class="position-select"></select></label>
               <label>로그인 ID (선택 — 입력하면 계정도 발급)<input id="person-create-login" maxlength="20" autocomplete="off" pattern="[a-z0-9_.\-]{4,20}"></label>
               <p id="person-limit-msg" class="warn" hidden>인원 한도에 도달했습니다. 팀 관리에서 한도를 변경할 수 있습니다.</p>
               <div class="row-end"><button type="submit" id="person-create-btn" class="btn btn-primary">추가</button></div>
@@ -286,6 +293,7 @@
               <div id="person-edit-body" hidden>
                 <label>이름<input id="person-edit-name" maxlength="20" required></label>
                 <label>부서<select id="person-edit-dept" required></select></label>
+                <label>직급<select id="person-edit-position" class="position-select"></select></label>
                 <div class="row-end"><button type="submit" class="btn btn-primary">수정</button></div>
                 <h4>계정</h4>
                 <p id="person-account-info" class="muted"></p>
@@ -307,7 +315,7 @@
               <button type="button" id="person-delete" class="btn btn-danger btn-sm" disabled>선택 삭제</button>
             </div>
             <table class="table selectable">
-              <thead><tr><th class="col-check"><input type="checkbox" id="person-check-all" aria-label="전체 선택"></th><th>이름</th><th>부서</th><th>로그인 ID</th><th>계정</th></tr></thead>
+              <thead><tr><th class="col-check"><input type="checkbox" id="person-check-all" aria-label="전체 선택"></th><th>이름</th><th>부서</th><th>직급</th><th>로그인 ID</th><th>계정</th></tr></thead>
               <tbody id="person-table"></tbody>
             </table>
           </div>

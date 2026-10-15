@@ -230,7 +230,7 @@ check('수정 후 김민수 점수 0', $member->call('team_data')['data']['me'][
 
 $admin->call('team_update', ['teamId' => $teamId, 'memberViewScope' => 'team']);
 $r = $member->call('team_data');
-check('team 범위: 팀 전체 관계', count($r['data']['relationships']) === 5);
+check('team 범위(부서원 직급): 자기 부서원이 포함된 관계만', count($r['data']['relationships']) === 3);
 
 // 점수 (관리자)
 $scores = [];
@@ -250,6 +250,37 @@ check('변경 시 revision 증가', $rev2 > $rev1);
 $admin->call('account_set_active', ['teamId' => $teamId, 'personId' => $p2, 'active' => false]);
 check('비활성화한 계정의 기존 세션은 다음 요청에서 401', $jieun->call('team_data')['status'] === 401);
 check('비활성 계정 로그인 불가', $jieun->call('login', ['loginId' => 'jieun', 'password' => 'Jieun1234'])['status'] === 403);
+
+// 직급: 팀장(p3, 기획) / 부서장(p4, 기획)
+echo "직급 권한\n";
+check('잘못된 직급 400', $admin->call('person_update', ['teamId' => $teamId, 'personId' => $p3, 'position' => 'boss'])['status'] === 400);
+$admin->call('person_update', ['teamId' => $teamId, 'personId' => $p3, 'position' => 'leader']);
+$admin->call('person_update', ['teamId' => $teamId, 'personId' => $p4, 'position' => 'head']);
+$mkUser = function (string $pid, string $login) use ($admin, $teamId, $base): Client {
+    $tmp = $admin->call('account_create', ['teamId' => $teamId, 'personId' => $pid, 'loginId' => $login])['data']['tempPassword'];
+    $c = new Client($base);
+    $c->login($login, $tmp);
+    $c->call('password_change', ['currentPassword' => $tmp, 'newPassword' => 'Pass12345']);
+    $c->call('consent', []);
+    return $c;
+};
+$leader = $mkUser($p3, 'leader1');
+$head = $mkUser($p4, 'head1');
+$all = count($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships']);
+$r = $leader->call('team_data');
+check('팀장은 팀 전체 관계를 받음', count($r['data']['relationships']) === $all && $r['data']['me']['position'] === 'leader');
+check('팀장이 다른 두 사람(개발) 관계 추가', $leader->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'public'])['status'] === 200);
+check('부서장이 자기 부서원(기획)↔타 부서원 관계 추가', $head->call('relationship_upsert', ['a' => $p5, 'b' => $p1, 'status' => 'private'])['status'] === 200);
+check('부서장이 타 부서원끼리 관계 추가 시 403', $head->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'social'])['status'] === 403);
+$p1p2b = strcmp($p1, $p2) < 0 ? "{$p1}_{$p2}" : "{$p2}_{$p1}";
+check('부서장이 타 부서원끼리 관계 삭제 시 403', $head->call('relationship_delete', ['ids' => [$p1p2b]])['status'] === 403);
+$headRels = $head->call('team_data')['data']['relationships'];
+$deptOf = [$p1 => 'dev', $p2 => 'dev', $p3 => 'plan', $p4 => 'plan', $p5 => 'plan'];
+check('부서장은 자기 부서원이 포함된 관계만 받음', count($headRels) > 0 && !array_filter($headRels, fn($x) => $deptOf[$x['a']] !== 'plan' && $deptOf[$x['b']] !== 'plan'));
+check('일반 부서원이 남의 관계 추가 시 403', $member->call('relationship_upsert', ['a' => $p3, 'b' => $p4, 'status' => 'social'])['status'] === 403);
+check('팀장이 관계 삭제', $leader->call('relationship_delete', ['ids' => [$p1p2b]])['status'] === 200);
+$exp = $admin->call('team_export', null, ['teamId' => $teamId])['data'];
+check('내보내기에 직급 포함', in_array('leader', array_column($exp['people'], 'position'), true));
 
 // --- 5단계: 내보내기/가져오기·로그 -------------------------------------------
 echo "5단계: 내보내기/가져오기·로그\n";

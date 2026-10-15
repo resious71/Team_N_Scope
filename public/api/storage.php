@@ -32,6 +32,8 @@ const PALETTE = [
     '#5DADE2', '#F39C12', '#E74C3C', '#AF7AC5', '#48C9B0',
 ];
 const STATUS_SCORES = ['private' => 1, 'public' => 0, 'social' => -1];
+/** 부서원 직급: 팀장 / 부서장 / 부서원 */
+const POSITIONS = ['leader' => '팀장', 'head' => '부서장', 'member' => '부서원'];
 const ID_PATTERN = '/^[A-Za-z0-9_-]{1,64}$/';
 const LOGIN_ID_PATTERN = '/^[a-z0-9_.-]{4,20}$/';
 
@@ -402,6 +404,14 @@ function valid_status(mixed $s): string
     return $s;
 }
 
+function valid_position(mixed $p): string
+{
+    if (!is_string($p) || !array_key_exists($p, POSITIONS)) {
+        throw new ApiError(400, '직급은 leader(팀장) / head(부서장) / member(부서원) 중 하나여야 합니다.');
+    }
+    return $p;
+}
+
 function valid_color(mixed $c): string
 {
     if (!is_string($c) || !in_array(strtoupper($c), PALETTE, true)) {
@@ -437,6 +447,60 @@ function next_department_color(array $departments): string
         }
     }
     return PALETTE[count($departments) % count(PALETTE)];
+}
+
+function person_of(array $team, string $personId): ?array
+{
+    $i = find_index($team['people'], $personId);
+    return $i >= 0 ? $team['people'][$i] : null;
+}
+
+function position_of(?array $person): string
+{
+    return $person['position'] ?? 'member';
+}
+
+/**
+ * 부서원 계정이 두 사람 사이 관계를 추가·수정·삭제할 수 있는지.
+ * 팀장: 팀 전체 / 부서장: 한쪽 당사자가 자기 부서원 / 부서원: 본인이 포함된 관계만.
+ */
+function member_can_manage(array $team, array $me, string $a, string $b): bool
+{
+    $pos = position_of($me);
+    if ($pos === 'leader') {
+        return true;
+    }
+    if ($pos === 'head') {
+        $dept = $me['departmentId'];
+        $pa = person_of($team, $a);
+        $pb = person_of($team, $b);
+        return ($pa && $pa['departmentId'] === $dept) || ($pb && $pb['departmentId'] === $dept);
+    }
+    return $a === $me['id'] || $b === $me['id'];
+}
+
+/**
+ * 부서원 계정에게 보내는 관계.
+ * 팀장: 팀 전체 / 부서장: 한쪽 당사자가 자기 부서원 / 부서원: 공개 범위 own이면 본인 관계, team이면 자기 부서원이 포함된 관계.
+ */
+function member_visible_relationships(array $team, array $me, string $viewScope): array
+{
+    $pos = position_of($me);
+    if ($pos === 'leader') {
+        return $team['relationships'];
+    }
+    $deptOf = [];
+    foreach ($team['people'] as $p) {
+        $deptOf[$p['id']] = $p['departmentId'];
+    }
+    $dept = $me['departmentId'];
+    $ownOnly = $pos === 'member' && $viewScope !== 'team';
+    return array_values(array_filter($team['relationships'], function ($r) use ($me, $dept, $deptOf, $ownOnly) {
+        if ($r['a'] === $me['id'] || $r['b'] === $me['id']) {
+            return true;
+        }
+        return !$ownOnly && (($deptOf[$r['a']] ?? null) === $dept || ($deptOf[$r['b']] ?? null) === $dept);
+    }));
 }
 
 /** 2.6 점수 계산: 본인이 포함된 관계 점수 값의 합. 저장하지 않고 항상 계산한다. */
@@ -520,7 +584,13 @@ function seed_team(array &$team, int $maxMembers, string $userId): int
         if (in_array(mb_strtolower($name), $existing, true)) {
             continue;
         }
-        $p = ['id' => new_id('p'), 'name' => $name, 'departmentId' => $deptIds[$i % count($deptIds)], 'createdAt' => $now];
+        $p = ['id' => new_id('p'), 'name' => $name, 'departmentId' => $deptIds[$i % count($deptIds)], 'position' => 'member', 'createdAt' => $now];
+        // 샘플: 첫 번째는 팀장, 각 부서의 첫 사람은 부서장
+        if (!$team['people'] && !$added) {
+            $p['position'] = 'leader';
+        } elseif (!array_filter($team['people'], fn($x) => $x['departmentId'] === $p['departmentId'])) {
+            $p['position'] = 'head';
+        }
         $team['people'][] = $p;
         $added[] = $p['id'];
     }
