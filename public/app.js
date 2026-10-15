@@ -1,4 +1,4 @@
-/* Good Cop vs Bad Apple — 클라이언트 로직 (모든 데이터는 PHP API를 통해서만 읽고 씀, 브라우저 저장소 미사용) */
+/* Team Scope — 클라이언트 로직 (모든 데이터는 PHP API를 통해서만 읽고 씀, 브라우저 저장소 미사용) */
 'use strict';
 
 // ---------------------------------------------------------------------------
@@ -343,11 +343,11 @@ async function showApp() {
   $('team-select').hidden = !isAdmin();
   $('team-name-fixed').hidden = isAdmin();
   $('panel-ranking').hidden = true;
-  $('panel-my-relations').hidden = isAdmin();
+  $('panel-my-relations').hidden = false;
   $('my-score').hidden = isAdmin();
   const side = document.querySelector('.side-column');
-  side.classList.toggle('admin', isAdmin());
-  side.classList.toggle('member', !isAdmin());
+  side.classList.toggle('admin', false);
+  side.classList.toggle('member', true);
   if (!isAdmin()) switchTab('diagram');
 
   if (isAdmin()) {
@@ -535,7 +535,7 @@ function canSeeScores() {
 function partyACandidates() {
   const pos = myPosition();
   const people = orderedPeople();
-  if (pos === 'leader' || pos === 'head') return people;
+  if (pos === 'admin' || pos === 'leader' || pos === 'head') return people;
   return people.filter((p) => p.id === myPersonId());
 }
 
@@ -763,7 +763,8 @@ function renderChart() {
 function applyHighlight() {
   const ids = new Set([
     ...matchIds(S.searchText),
-    ...(isAdmin() ? matchIds(S.adminRelFilter) : matchIds(S.myRelFilter).filter((id) => id !== myPersonId())),
+    ...(isAdmin() ? matchIds(S.adminRelFilter) : []),
+    ...matchIds(S.myRelFilter).filter((id) => id !== myPersonId()),
   ]);
   const svg = d3.select('#chart');
   svg.classed('dimmed', ids.size > 0);
@@ -838,7 +839,7 @@ function renderSidePanels() {
   if (!S.data) return;
   $('panel-ranking').hidden = !canSeeScores();
   if (canSeeScores()) renderRanking();
-  if (!isAdmin()) renderMyPanel();
+  renderMyPanel();
   renderDeptInfo();
   renderDeptStats();
 }
@@ -883,7 +884,7 @@ function renderMyPanel() {
   const me = myPersonId();
   const pos = myPosition();
   $('my-score').textContent = `내 점수 ${fmtScore(S.data.me ? S.data.me.score : 0)}`;
-  $('my-rel-scope').textContent = pos === 'leader' ? '· 팀 전체' : pos === 'head' ? '· 우리 부서원' : '· 내 관계';
+  $('my-rel-scope').textContent = pos === 'admin' || pos === 'leader' ? '· 팀 전체' : pos === 'head' ? '· 우리 부서원' : '· 내 관계';
   const alone = S.data.people.length < 2;
   $('my-alone').hidden = !alone;
   $('my-rel-form').hidden = alone;
@@ -938,6 +939,7 @@ function renderMyPanel() {
       cb,
       h('span', { class: 'dot', style: { background: deptColor(other ? other.departmentId : '') } }),
       h('span', { class: 'grow', text: label }),
+      r.updatedByLabel ? h('span', { class: 'by', text: `수정: ${r.updatedByLabel}` }) : null,
       r.updatedByRole ? h('span', { class: 'by', text: `수정: ${r.updatedByRole === 'party' ? (r.a === me || r.b === me ? '상대방' : '당사자') : (UPDATED_BY_LABELS[r.updatedByRole] || '-')}` }) : null,
       h('span', { class: `status-chip ${r.status}`, text: STATUS[r.status].label }),
     ]);
@@ -1788,7 +1790,7 @@ function bind() {
     if (!otherId) { toast('상대를 선택하세요.', true); return; }
     if (!status) { toast('관계 상태를 선택하세요.', true); return; }
     if (!canManagePair(a, otherId)) { toast('이 관계를 관리할 권한이 없습니다.', true); return; }
-    const body = a === myPersonId() ? { otherId, status } : { a, b: otherId, status };
+    const body = a === myPersonId() ? { otherId, status } : teamBody({ a, b: otherId, status });
     const res = await mutate('relationship_upsert', body);
     toast(res.created ? '관계를 추가했습니다.' : '관계를 수정했습니다.');
   }));
@@ -1796,7 +1798,7 @@ function bind() {
   $('my-rel-delete').addEventListener('click', safe(async () => {
     const n = S.mySelected.size;
     if (!n || !confirm(`선택한 관계 ${n}개를 삭제할까요? 두 사람의 점수에 모두 반영됩니다.`)) return;
-    await mutate('relationship_delete', { ids: [...S.mySelected] }, { success: `관계 ${n}개를 삭제했습니다.` });
+    await mutate('relationship_delete', teamBody({ ids: [...S.mySelected] }), { success: `관계 ${n}개를 삭제했습니다.` });
     S.mySelected.clear();
     renderMyPanel();
   }));
