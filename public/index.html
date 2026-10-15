@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Good Cop vs Bad Apple</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="lib/d3.v7.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <!-- 로딩 -->
+  <div id="view-loading" class="center-view"><p class="muted">불러오는 중…</p></div>
+
+  <!-- 로그인 -->
+  <section id="view-login" class="center-view" hidden>
+    <form id="login-form" class="card auth-card" autocomplete="on">
+      <h1 class="app-title">Good Cop vs Bad Apple</h1>
+      <label>로그인 ID<input id="login-id" name="username" autocomplete="username" required maxlength="40"></label>
+      <label>비밀번호<input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="200"></label>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <button type="submit" class="btn btn-primary btn-block">로그인</button>
+    </form>
+  </section>
+
+  <!-- 비밀번호 변경 -->
+  <section id="view-password" class="center-view" hidden>
+    <form id="password-form" class="card auth-card">
+      <h2>비밀번호 변경</h2>
+      <p id="password-notice" class="muted"></p>
+      <input type="text" name="username" autocomplete="username" id="password-username" hidden>
+      <label>현재 비밀번호<input id="pw-current" type="password" autocomplete="current-password" required></label>
+      <label>새 비밀번호<input id="pw-new" type="password" autocomplete="new-password" required minlength="8" maxlength="72"></label>
+      <label>새 비밀번호 확인<input id="pw-confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="72"></label>
+      <p class="hint">8자 이상, 영문과 숫자를 모두 포함해야 합니다.</p>
+      <p id="password-error" class="form-error" role="alert"></p>
+      <div class="row-end">
+        <button type="button" id="password-cancel" class="btn">취소</button>
+        <button type="button" id="password-logout" class="btn">로그아웃</button>
+        <button type="submit" class="btn btn-primary">변경</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 개인정보 안내·동의 -->
+  <section id="view-consent" class="center-view" hidden>
+    <div class="card consent-card">
+      <h2>개인정보 수집·이용 안내</h2>
+      <div id="consent-text" class="consent-text"></div>
+      <label class="check"><input type="checkbox" id="consent-check"> 위 내용을 확인했으며 동의합니다.</label>
+      <p id="consent-error" class="form-error" role="alert"></p>
+      <div class="row-end">
+        <button type="button" id="consent-logout" class="btn">동의하지 않음 (로그아웃)</button>
+        <button type="button" id="consent-submit" class="btn btn-primary" disabled>동의하고 시작</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 메인 -->
+  <div id="view-app" hidden>
+    <header class="app-header">
+      <div class="header-left">
+        <h1 class="app-title">Good Cop vs Bad Apple</h1>
+        <select id="team-select" aria-label="팀 선택" hidden></select>
+        <span id="team-name-fixed" class="team-fixed" hidden></span>
+      </div>
+      <div class="header-right">
+        <span id="save-status" class="save-status" aria-live="polite"></span>
+        <span id="user-label" class="user-label"></span>
+        <button type="button" id="btn-change-password" class="btn btn-sm">비밀번호 변경</button>
+        <button type="button" id="btn-logout" class="btn btn-sm">로그아웃</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab active" role="tab" data-tab="diagram" aria-selected="true">관계도</button>
+      <button type="button" class="tab" role="tab" data-tab="admin" id="tab-btn-admin" aria-selected="false" hidden>관리자</button>
+    </nav>
+
+    <main class="container">
+      <!-- 관계도 탭 -->
+      <section id="tab-diagram" class="tab-panel">
+        <div id="no-team-guide" class="card empty-guide" hidden>
+          <h2>아직 팀이 없습니다</h2>
+          <p>관리자 탭의 팀 관리에서 첫 팀을 만들어 주세요. 샘플 데이터를 함께 생성할 수 있습니다.</p>
+          <button type="button" id="btn-go-team-admin" class="btn btn-primary">팀 만들기</button>
+        </div>
+
+        <div id="diagram-layout" class="diagram-layout">
+          <div class="chart-column">
+            <div class="card chart-card">
+              <div class="chart-toolbar">
+                <input type="search" id="person-search" placeholder="이름으로 사람 검색" aria-label="사람 검색">
+                <span id="my-score" class="my-score" hidden></span>
+              </div>
+              <div id="chart-scroll" class="chart-scroll">
+                <svg id="chart" role="img" aria-label="팀 관계도"></svg>
+                <p id="chart-empty" class="chart-empty" hidden></p>
+              </div>
+              <div class="slider-row">
+                <label for="zoom-slider">해상도</label>
+                <input type="range" id="zoom-slider" min="50" max="150" step="10" value="100">
+                <span id="zoom-value">100%</span>
+              </div>
+            </div>
+            <div class="card legend-card">
+              <div class="legend-section">
+                <h3>관계 상태</h3>
+                <div id="legend-status" class="legend-status"></div>
+                <p class="hint">직선 = 원의 정반대 위치에 있는 두 사람의 관계, 곡선 = 그 외</p>
+              </div>
+              <div class="legend-section">
+                <h3>부서</h3>
+                <div id="legend-depts" class="legend-depts"></div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="side-column">
+            <!-- 부서원: 내 관계 -->
+            <div id="panel-my-relations" class="card panel" hidden>
+              <h3>내 관계</h3>
+              <p id="my-alone" class="muted" hidden>팀에 본인만 있어 관계를 추가할 수 없습니다.</p>
+              <form id="my-rel-form" class="rel-form">
+                <label>상대
+                  <select id="my-rel-other" required></select>
+                </label>
+                <fieldset class="status-radios" id="my-rel-status">
+                  <legend class="sr-only">관계 상태</legend>
+                </fieldset>
+                <p class="hint">이 관계는 두 사람의 점수에 모두 반영됩니다.</p>
+                <div class="row-end">
+                  <button type="submit" id="my-rel-save" class="btn btn-primary btn-sm">저장</button>
+                </div>
+              </form>
+              <div class="list-toolbar">
+                <input type="search" id="my-rel-filter" placeholder="이름 검색" aria-label="내 관계 검색">
+                <span id="my-rel-count" class="muted"></span>
+              </div>
+              <ul id="my-rel-list" class="select-list"></ul>
+              <div class="row-end">
+                <button type="button" id="my-rel-delete" class="btn btn-danger btn-mini" disabled>항목 삭제</button>
+              </div>
+            </div>
+
+            <!-- 관리자: 순위 -->
+            <div id="panel-ranking" class="card panel" hidden>
+              <h3>순위</h3>
+              <div class="ranking">
+                <div><h4>상위 3명</h4><ol id="rank-top" class="rank-list top"></ol></div>
+                <div><h4>하위 3명</h4><ol id="rank-bottom" class="rank-list bottom"></ol></div>
+              </div>
+            </div>
+
+            <div class="card panel panel-info">
+              <h3>부서원 정보</h3>
+              <select id="info-dept" aria-label="부서 선택"></select>
+              <textarea id="info-members" readonly aria-label="부서 소속 인원"></textarea>
+            </div>
+
+            <div class="card panel panel-stats">
+              <h3>부서 통계</h3>
+              <div id="dept-stats" class="dept-stats"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 관리자 탭 -->
+      <section id="tab-admin" class="tab-panel" hidden>
+        <nav class="subtabs">
+          <button type="button" class="subtab active" data-sub="teams">팀 관리</button>
+          <button type="button" class="subtab" data-sub="depts">부서 관리</button>
+          <button type="button" class="subtab" data-sub="people">부서원 관리</button>
+          <button type="button" class="subtab" data-sub="rels">관계 관리</button>
+          <button type="button" class="subtab" data-sub="audit">활동 로그</button>
+        </nav>
+
+        <!-- 팀 관리 -->
+        <div class="sub-panel" data-sub="teams">
+          <div class="admin-grid">
+            <form id="team-create-form" class="card">
+              <h3>팀 추가</h3>
+              <label>팀 이름<input id="team-create-name" maxlength="30" required></label>
+              <label class="check"><input type="checkbox" id="team-create-seed"> 샘플 데이터 생성</label>
+              <div class="row-end"><button type="submit" class="btn btn-primary">추가</button></div>
+            </form>
+
+            <form id="team-edit-form" class="card">
+              <h3>현재 팀 설정</h3>
+              <p class="muted no-team-msg">선택된 팀이 없습니다.</p>
+              <div class="needs-team">
+                <label>팀 이름<input id="team-edit-name" maxlength="30" required></label>
+                <label>부서원 관계도 공개 범위
+                  <select id="team-edit-scope">
+                    <option value="own">본인 관계만 (own)</option>
+                    <option value="team">팀 전체 관계 (team)</option>
+                  </select>
+                </label>
+                <label>부서원 인원 한도<input id="team-edit-max" type="number" min="1" required></label>
+                <p id="team-edit-max-hint" class="hint"></p>
+                <div class="row-end">
+                  <button type="button" id="team-seed" class="btn">샘플 데이터 추가</button>
+                  <button type="submit" class="btn btn-primary">저장</button>
+                </div>
+              </div>
+            </form>
+
+            <div class="card">
+              <h3>내보내기 / 가져오기</h3>
+              <div class="needs-team">
+                <button type="button" id="team-export" class="btn">현재 팀 JSON 내보내기</button>
+              </div>
+              <form id="team-import-form" class="stack">
+                <label>JSON 파일 (최대 2MB, 내보내기 파일 또는 삭제된 팀 파일)<input id="import-file" type="file" accept="application/json,.json" required></label>
+                <label>새 팀 이름 (비우면 파일의 팀 이름)<input id="import-name" maxlength="30"></label>
+                <label>인원 한도 (30명 초과 파일은 필수)<input id="import-max" type="number" min="1"></label>
+                <div class="row-end"><button type="submit" class="btn btn-primary">새 팀으로 가져오기</button></div>
+              </form>
+            </div>
+
+            <form id="team-delete-form" class="card danger-zone">
+              <h3>현재 팀 삭제</h3>
+              <p class="muted no-team-msg">선택된 팀이 없습니다.</p>
+              <div class="needs-team">
+                <p class="warn">팀의 부서·부서원·관계와 <strong>소속 부서원 계정이 모두 삭제</strong>됩니다. 팀 파일은 휴지통(trash)으로 이동합니다.</p>
+                <label>확인을 위해 팀 이름 <strong id="team-delete-target"></strong> 을(를) 입력하세요<input id="team-delete-confirm" autocomplete="off"></label>
+                <div class="row-end"><button type="submit" class="btn btn-danger">팀 삭제</button></div>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <h3>팀 목록</h3>
+            <table class="table">
+              <thead><tr><th>팀 이름</th><th>인원 / 한도</th><th>공개 범위</th><th>수정일</th></tr></thead>
+              <tbody id="team-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 부서 관리 -->
+        <div class="sub-panel" data-sub="depts" hidden>
+          <p class="muted no-team-msg">먼저 팀을 선택하거나 만드세요.</p>
+          <div class="admin-grid needs-team">
+            <form id="dept-create-form" class="card">
+              <h3>부서 추가</h3>
+              <label>부서명<input id="dept-create-name" maxlength="20" required></label>
+              <p class="hint">색상은 아직 쓰지 않은 팔레트 색으로 자동 배정됩니다.</p>
+              <div class="row-end"><button type="submit" class="btn btn-primary">추가</button></div>
+            </form>
+            <form id="dept-edit-form" class="card">
+              <h3>부서 수정</h3>
+              <p class="muted" id="dept-edit-empty">목록에서 부서 1개를 선택하세요.</p>
+              <div id="dept-edit-body" hidden>
+                <label>부서명<input id="dept-edit-name" maxlength="20" required></label>
+                <div id="dept-edit-palette" class="palette" role="radiogroup" aria-label="부서 색상"></div>
+                <div class="row-end"><button type="submit" class="btn btn-primary">저장</button></div>
+              </div>
+            </form>
+          </div>
+          <div class="card needs-team">
+            <div class="list-toolbar">
+              <h3>부서 목록</h3>
+              <button type="button" id="dept-delete" class="btn btn-danger btn-sm" disabled>선택 삭제</button>
+            </div>
+            <ul id="dept-list" class="select-list scroll-list"></ul>
+          </div>
+        </div>
+
+        <!-- 부서원 관리 -->
+        <div class="sub-panel" data-sub="people" hidden>
+          <p class="muted no-team-msg">먼저 팀을 선택하거나 만드세요.</p>
+          <div class="admin-grid needs-team">
+            <form id="person-create-form" class="card">
+              <h3>부서원 추가</h3>
+              <label>이름<input id="person-create-name" maxlength="20" required></label>
+              <label>부서<select id="person-create-dept" required></select></label>
+              <label>로그인 ID (선택 — 입력하면 계정도 발급)<input id="person-create-login" maxlength="20" autocomplete="off" pattern="[a-z0-9_.\-]{4,20}"></label>
+              <p id="person-limit-msg" class="warn" hidden>인원 한도에 도달했습니다. 팀 관리에서 한도를 변경할 수 있습니다.</p>
+              <div class="row-end"><button type="submit" id="person-create-btn" class="btn btn-primary">추가</button></div>
+            </form>
+            <form id="person-edit-form" class="card">
+              <h3>선택한 부서원</h3>
+              <p class="muted" id="person-edit-empty">목록에서 부서원 1명을 선택하세요.</p>
+              <div id="person-edit-body" hidden>
+                <label>이름<input id="person-edit-name" maxlength="20" required></label>
+                <label>부서<select id="person-edit-dept" required></select></label>
+                <div class="row-end"><button type="submit" class="btn btn-primary">수정</button></div>
+                <h4>계정</h4>
+                <p id="person-account-info" class="muted"></p>
+                <div id="person-account-create" class="inline-form">
+                  <input id="person-account-login" maxlength="20" placeholder="로그인 ID" autocomplete="off" aria-label="발급할 로그인 ID">
+                  <button type="button" id="btn-account-create" class="btn btn-sm">계정 발급</button>
+                </div>
+                <div id="person-account-actions" class="row-end">
+                  <button type="button" id="btn-account-reset" class="btn btn-sm">비밀번호 초기화</button>
+                  <button type="button" id="btn-account-unlock" class="btn btn-sm">잠금 해제</button>
+                  <button type="button" id="btn-account-toggle" class="btn btn-sm"></button>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="card needs-team">
+            <div class="list-toolbar">
+              <h3>부서원 목록 <span id="person-count" class="count-badge"></span></h3>
+              <button type="button" id="person-delete" class="btn btn-danger btn-sm" disabled>선택 삭제</button>
+            </div>
+            <table class="table selectable">
+              <thead><tr><th class="col-check"><input type="checkbox" id="person-check-all" aria-label="전체 선택"></th><th>이름</th><th>부서</th><th>로그인 ID</th><th>계정</th></tr></thead>
+              <tbody id="person-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 관계 관리 -->
+        <div class="sub-panel" data-sub="rels" hidden>
+          <p class="muted no-team-msg">먼저 팀을 선택하거나 만드세요.</p>
+          <form id="admin-rel-form" class="card needs-team">
+            <h3>관계 추가 / 수정 (데이터 보정용)</h3>
+            <div class="inline-form wrap">
+              <select id="admin-rel-a" aria-label="부서원 A" required></select>
+              <span>↔</span>
+              <select id="admin-rel-b" aria-label="부서원 B" required></select>
+              <fieldset class="status-radios" id="admin-rel-status"><legend class="sr-only">관계 상태</legend></fieldset>
+              <button type="submit" class="btn btn-primary btn-sm">저장</button>
+            </div>
+          </form>
+          <div class="card needs-team">
+            <div class="list-toolbar">
+              <input type="search" id="admin-rel-filter" placeholder="이름 검색 (관계도에서 강조)" aria-label="관계 검색">
+              <span id="admin-rel-count" class="muted"></span>
+              <span class="spacer"></span>
+              <select id="admin-rel-bulk-status" aria-label="선택 항목 상태 변경">
+                <option value="">선택 항목 상태 변경…</option>
+                <option value="private">사적 (긍정 +1)</option>
+                <option value="public">공적 (중립 0)</option>
+                <option value="social">사회적 (부정 -1)</option>
+              </select>
+              <button type="button" id="admin-rel-delete" class="btn btn-danger btn-sm" disabled>선택 삭제</button>
+            </div>
+            <div class="scroll-list">
+              <table class="table selectable">
+                <thead><tr><th class="col-check"><input type="checkbox" id="rel-check-all" aria-label="전체 선택"></th><th>관계</th><th>상태</th><th>입력자</th><th>최종 수정자</th><th>수정일</th></tr></thead>
+                <tbody id="admin-rel-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 활동 로그 -->
+        <div class="sub-panel" data-sub="audit" hidden>
+          <div class="card">
+            <div class="list-toolbar">
+              <h3>최근 활동 로그 (100건)</h3>
+              <button type="button" id="audit-refresh" class="btn btn-sm">새로고침</button>
+            </div>
+            <div class="scroll-list">
+              <table class="table">
+                <thead><tr><th>시각</th><th>사용자</th><th>동작</th><th>팀</th><th>대상</th><th>요약</th></tr></thead>
+                <tbody id="audit-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 임시 비밀번호 1회 표시 -->
+  <dialog id="temp-pw-dialog" class="card">
+    <h3>임시 비밀번호</h3>
+    <p>아래 비밀번호는 <strong>지금 한 번만</strong> 표시됩니다. 부서원에게 안전하게 전달하세요. 최초 로그인 시 변경해야 합니다.</p>
+    <p>로그인 ID: <code id="temp-pw-login"></code></p>
+    <p class="temp-pw"><code id="temp-pw-value"></code></p>
+    <div class="row-end">
+      <button type="button" id="temp-pw-copy" class="btn btn-sm">복사</button>
+      <button type="button" id="temp-pw-close" class="btn btn-primary btn-sm">확인</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
+  <div id="tooltip" class="tooltip" hidden></div>
+</body>
+</html>
