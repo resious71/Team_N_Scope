@@ -177,6 +177,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .stat-row .num { text-align: right; color: var(--text-2); }
 
 #panel-my-relations { display: flex; flex-direction: column; max-height: 60vh; }
+
+/* 좌우 배치일 때 오른쪽 열 높이를 왼쪽 열(관계 상태 카드 아래)에 맞춤 — 남는 높이는 유동 카드가 흡수 */
+.side-column.aligned { min-height: 0; }
+.side-column.aligned > .card { flex: 0 0 auto; }
+.side-column.aligned.admin > .panel-stats,
+.side-column.aligned.member > #panel-my-relations { flex: 1 1 0; min-height: 0; height: auto; max-height: none; }
 .rel-form label { margin-bottom: 6px; }
 .status-radios { border: 0; padding: 0; margin: 4px 0; display: flex; gap: 12px; flex-wrap: nowrap; }
 .status-radios label { flex-direction: row; align-items: center; gap: 4px; margin: 0; white-space: nowrap; font-size: 13px; cursor: pointer; }

@@ -286,6 +286,9 @@ async function showApp() {
   $('panel-ranking').hidden = !isAdmin();
   $('panel-my-relations').hidden = isAdmin();
   $('my-score').hidden = isAdmin();
+  const side = document.querySelector('.side-column');
+  side.classList.toggle('admin', isAdmin());
+  side.classList.toggle('member', !isAdmin());
   if (!isAdmin()) switchTab('diagram');
 
   if (isAdmin()) {
@@ -429,6 +432,15 @@ function computeRanking(people) {
 // ---------------------------------------------------------------------------
 // 렌더링
 // ---------------------------------------------------------------------------
+/** 좌우로 나란히 있을 때 오른쪽 열의 아래를 왼쪽 마지막 카드(관계 상태)의 아래와 맞춘다. */
+function alignSideColumn() {
+  const left = document.querySelector('.chart-column');
+  const side = document.querySelector('.side-column');
+  const sideBySide = left.offsetHeight > 0 && Math.abs(left.offsetTop - side.offsetTop) < 2;
+  side.classList.toggle('aligned', sideBySide);
+  side.style.height = sideBySide ? `${left.offsetHeight}px` : '';
+}
+
 function renderAll() {
   const noTeam = !S.teamId;
   $('no-team-guide').hidden = !(noTeam && isAdmin());
@@ -438,6 +450,7 @@ function renderAll() {
   renderLegend();
   renderSidePanels();
   if (isAdmin()) renderAdmin();
+  alignSideColumn();
 }
 
 function pruneSelections() {
@@ -597,7 +610,10 @@ function applyZoom() {
   $('zoom-slider').style.background = `linear-gradient(to right, #C4DFF7 ${pct}%, #E0EEFB ${pct}%)`;
 }
 
-window.addEventListener('resize', () => { if (S.data) applyZoom(); });
+window.addEventListener('resize', () => {
+  if (S.data) applyZoom();
+  alignSideColumn();
+});
 
 function showTooltip(event, text) {
   const t = $('tooltip');
@@ -1391,6 +1407,7 @@ async function logout() {
 // ---------------------------------------------------------------------------
 async function boot() {
   bind();
+  if ('ResizeObserver' in window) new ResizeObserver(alignSideColumn).observe(document.querySelector('.chart-column'));
   try {
     applyMe(await api('me'));
     route();
