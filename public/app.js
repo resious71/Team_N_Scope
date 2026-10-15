@@ -503,6 +503,9 @@ function renderChart() {
   const half = CHART_SIZE / 2;
   svg.attr('viewBox', `${-half} ${-half} ${CHART_SIZE} ${CHART_SIZE}`);
 
+  // 노드가 놓이는 큰 원 (엣지·노드보다 뒤에 그림)
+  svg.append('circle').attr('class', 'ring').attr('r', CHART_RADIUS);
+
   const pos = layoutNodes(people);
   const me = myPersonId();
   const rels = S.data.relationships.filter((r) => S.statusFilter[r.status] && pos.has(r.a) && pos.has(r.b));

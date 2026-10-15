@@ -131,6 +131,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
 
 /* 차트 요소 */
+#chart .ring { fill: none; stroke: #E5E7EB; stroke-width: 6px; pointer-events: none; }
 #chart .node circle { stroke: #fff; stroke-width: 1.5px; cursor: pointer; }
 #chart .node text { font-size: 12px; fill: var(--text); cursor: pointer; }
 #chart .node.me text { font-weight: 700; }
