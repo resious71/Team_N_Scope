@@ -121,10 +121,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .slider-row { display: flex; align-items: center; gap: 10px; height: 30px; font-size: 13px; color: var(--text-2); }
 .slider-row input { flex: 1; max-width: 300px; }
 
+/* 해상도 슬라이더 (파스텔 톤) */
+#zoom-slider { -webkit-appearance: none; appearance: none; height: 6px; padding: 0; border: 0; border-radius: 999px; background: #E0EEFB; cursor: pointer; }
+#zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #A5CDF3; border: 2px solid #fff; box-shadow: 0 0 0 1px #8DBDEB; }
+#zoom-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #A5CDF3; border: 2px solid #fff; box-shadow: 0 0 0 1px #8DBDEB; }
+#zoom-slider::-moz-range-track { height: 6px; border-radius: 999px; background: #E0EEFB; }
+#zoom-slider::-moz-range-progress { height: 6px; border-radius: 999px; background: #C4DFF7; }
+
 .legend-card { height: calc(23vh - 30px); min-height: 110px; overflow: auto; display: flex; gap: 24px; padding: 10px 14px; }
 .legend-section { min-width: 0; }
 .legend-section h3 { font-size: 13px; margin-bottom: 4px; }
 .legend-status { display: flex; flex-direction: column; gap: 3px; }
+.legend-status input.private { accent-color: #A5C8FA; }
+.legend-status input.public { accent-color: #D6D9DE; }
+.legend-status input.social { accent-color: #F9B4B4; }
 .legend-status label { flex-direction: row; align-items: center; gap: 8px; margin: 0; cursor: pointer; }
 .legend-depts { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
@@ -189,9 +199,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .ranking { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .rank-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .rank-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.rank-badge { width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-.rank-list.top .rank-badge { background: var(--private); }
-.rank-list.bottom .rank-badge { background: var(--social); }
+.rank-badge { width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.rank-list.top .rank-badge { background: #BFDBFE; color: #1E40AF; }
+.rank-list.bottom .rank-badge { background: #FECACA; color: #991B1B; }
 .rank-list .score { margin-left: auto; font-weight: 600; }
 
 .empty-guide { max-width: 560px; margin: 40px auto; text-align: center; }

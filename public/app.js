@@ -592,6 +592,9 @@ function applyZoom() {
     box.scrollTop = (box.scrollHeight - box.clientHeight) / 2;
   }
   $('zoom-value').textContent = `${S.zoom}%`;
+  // 슬라이더 채워진 구간 (파스텔 톤, WebKit/Chromium용)
+  const pct = ((S.zoom - 50) / 100) * 100;
+  $('zoom-slider').style.background = `linear-gradient(to right, #C4DFF7 ${pct}%, #E0EEFB ${pct}%)`;
 }
 
 window.addEventListener('resize', () => { if (S.data) applyZoom(); });
@@ -617,7 +620,7 @@ function hideTooltip() {
 function renderLegend() {
   const box = clear($('legend-status'));
   for (const key of STATUS_KEYS) {
-    const cb = h('input', { type: 'checkbox', checked: S.statusFilter[key] });
+    const cb = h('input', { type: 'checkbox', class: key, checked: S.statusFilter[key] });
     cb.addEventListener('change', () => {
       S.statusFilter[key] = cb.checked;
       renderChart();
