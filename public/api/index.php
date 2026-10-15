@@ -347,6 +347,7 @@ function act_me(array $input, array $ctx): array
         'csrfToken' => $ctx['csrf'],
         'privacyNotice' => ['version' => PRIVACY_NOTICE_VERSION, 'paragraphs' => PRIVACY_NOTICE],
         'palette' => PALETTE,
+        'appVersion' => APP_VERSION,
         'limits' => ['defaultMaxMembers' => DEFAULT_MAX_MEMBERS, 'systemMaxMembers' => SYSTEM_MAX_MEMBERS],
     ];
     if ($user['role'] === 'member') {

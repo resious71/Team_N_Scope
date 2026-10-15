@@ -143,6 +143,7 @@ button:focus-visible, .select-list li:focus-visible, .tab:focus-visible, .subtab
 .app-title { display: flex; align-items: center; gap: 8px; }
 .app-header .app-title { font-size: 16px; font-weight: 700; margin: 0; white-space: nowrap; }
 .brand-icon { display: block; }
+.app-version { font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 2px; align-self: flex-end; padding-bottom: 2px; }
 #team-select { font-weight: 600; min-width: 140px; }
 .team-fixed { font-weight: 600; color: var(--text-2); padding: 4px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; }
 .user-label { color: var(--text-2); white-space: nowrap; font-size: 13px; padding-right: 4px; }
