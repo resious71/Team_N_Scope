@@ -151,6 +151,26 @@ check('같은 이름 부서원 409', $admin->call('person_create', ['teamId' => 
 check('로그인 ID 중복 409', $admin->call('person_create', ['teamId' => $teamId, 'name' => '새사람', 'departmentId' => $deptId, 'loginId' => 'MINSU.KIM'])['status'] === 409);
 check('소속 인원이 있는 부서 삭제 409', $admin->call('department_delete', ['teamId' => $teamId, 'departmentIds' => [$deptId]])['status'] === 409);
 
+// 관리자가 비밀번호 지정
+$r = $admin->call('person_create', ['teamId' => $teamId, 'name' => '비번지정', 'departmentId' => $deptId, 'loginId' => 'pw.set', 'password' => 'short']);
+check('지정 비밀번호도 정책 검사 (400)', $r['status'] === 400);
+check('로그인 ID 없이 비밀번호만 지정 시 400', $admin->call('person_create', ['teamId' => $teamId, 'name' => '비번지정', 'departmentId' => $deptId, 'password' => 'Given1234'])['status'] === 400);
+$r = $admin->call('person_create', ['teamId' => $teamId, 'name' => '비번지정', 'departmentId' => $deptId, 'loginId' => 'pw.set', 'password' => 'Given1234']);
+check('비밀번호를 지정해 계정 발급 (임시 비밀번호 없음)', $r['status'] === 200 && $r['data']['tempPassword'] === null);
+$pwPerson = $r['data']['person']['id'];
+$pwClient = new Client($base);
+$r = $pwClient->login('pw.set', 'Given1234');
+check('지정한 비밀번호로 로그인, 변경 강제 없음', $r['status'] === 200 && $r['data']['user']['mustChangePassword'] === false);
+check('부서원 목록에서 비밀번호 변경', $admin->call('account_set_password', ['teamId' => $teamId, 'personId' => $pwPerson, 'password' => 'Changed99'])['status'] === 200);
+check('바뀐 비밀번호로 로그인', (new Client($base))->login('pw.set', 'Changed99')['status'] === 200);
+check('부서원은 비밀번호 지정 API 403', $pwClient->call('account_set_password', ['teamId' => $teamId, 'personId' => $pwPerson, 'password' => 'Hacked999'])['status'] === 403);
+$noAcc = $admin->call('person_create', ['teamId' => $teamId, 'name' => '계정없음', 'departmentId' => $deptId])['data']['person']['id'];
+check('계정 없는 사람은 로그인 ID 없이 비밀번호 지정 시 400', $admin->call('account_set_password', ['teamId' => $teamId, 'personId' => $noAcc, 'password' => 'NewPass11'])['status'] === 400);
+$r = $admin->call('account_set_password', ['teamId' => $teamId, 'personId' => $noAcc, 'password' => 'NewPass11', 'loginId' => 'no.acc', 'mustChangePassword' => true]);
+check('계정 없는 사람에게 계정 만들며 비밀번호 지정', $r['status'] === 200 && $r['data']['created'] === true);
+check('변경 요구 옵션 적용', (new Client($base))->login('no.acc', 'NewPass11')['data']['user']['mustChangePassword'] === true);
+$admin->call('person_delete', ['teamId' => $teamId, 'personIds' => [$pwPerson, $noAcc]]);
+
 // 인원 한도
 check('현재 인원보다 낮은 한도 409', $admin->call('team_update', ['teamId' => $teamId, 'maxMembers' => 3])['status'] === 409);
 check('한도를 4로 변경', $admin->call('team_update', ['teamId' => $teamId, 'maxMembers' => 4])['status'] === 200);

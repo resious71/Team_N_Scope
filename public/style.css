@@ -325,6 +325,8 @@ button:focus-visible, .select-list li:focus-visible, .tab:focus-visible, .subtab
 .table tbody tr.selected { background: var(--accent-soft); }
 .table .col-check { width: 36px; }
 .table .col-actions { text-align: right; }
+.inline-select { padding: 3px 26px 3px 8px; font-size: 13px; min-width: 110px; background-color: transparent; border-color: transparent; }
+.inline-select:hover { border-color: var(--border-strong); background-color: #fff; }
 .table td.empty { text-align: center; color: var(--muted); padding: 24px; }
 .acc-badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: #f1f3f6; color: var(--text-2); white-space: nowrap; }
 .acc-badge.active { background: #dcfce7; color: #166534; }
