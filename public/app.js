@@ -277,6 +277,7 @@ function applyMe(data) {
   S.me = data.user;
   S.csrf = data.csrfToken;
   S.palette = data.palette || S.palette;
+  if (data.appVersion) $('app-version').textContent = `v${data.appVersion}`;
   S.privacy = data.privacyNotice || S.privacy;
   S.limits = data.limits || S.limits;
   if (data.team) S.memberTeam = data.team;
