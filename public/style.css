@@ -161,7 +161,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .panel-stats { height: 25vh; min-height: 160px; display: flex; flex-direction: column; }
 .dept-stats { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .stat-row { display: grid; grid-template-columns: 90px 1fr 32px; gap: 8px; align-items: center; font-size: 13px; }
-.stat-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-row .name { display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stat-bar { height: 14px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
 .stat-bar span { display: block; height: 100%; border-radius: 4px; }
 .stat-row .num { text-align: right; color: var(--text-2); }

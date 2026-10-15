@@ -94,6 +94,14 @@ function fmtDate(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** 색을 흰색과 섞어 파스텔 톤으로 (amount: 흰색 비율 0~1) */
+function pastel(hex, amount = 0.5) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c) => Math.round(c + (255 - c) * amount);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function fmtScore(n) {
   return n > 0 ? `+${n}` : String(n);
 }
@@ -753,8 +761,8 @@ function renderDeptStats() {
   if (!counts.length) box.append(h('p', { class: 'muted', text: '부서가 없습니다.' }));
   for (const { d, n } of counts) {
     box.append(h('div', { class: 'stat-row', title: `${d.name}: ${n}명` }, [
-      h('span', { class: 'name', text: d.name }),
-      h('div', { class: 'stat-bar' }, [h('span', { style: { width: `${(n / max) * 100}%`, background: d.color } })]),
+      h('span', { class: 'name' }, [h('span', { class: 'dot', style: { background: d.color } }), d.name]),
+      h('div', { class: 'stat-bar' }, [h('span', { style: { width: `${(n / max) * 100}%`, background: pastel(d.color) } })]),
       h('span', { class: 'num', text: `${n}명` }),
     ]));
   }
