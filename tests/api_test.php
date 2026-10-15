@@ -133,9 +133,9 @@ check('팀 생성', $r['status'] === 200 && $teamId !== '');
 check('팀 이름 중복 409', $admin->call('team_create', ['name' => '개발1팀'])['status'] === 409);
 $r = $admin->call('department_create', ['teamId' => $teamId, 'name' => '개발']);
 $deptId = $r['data']['department']['id'] ?? '';
-check('부서 생성 + 첫 팔레트 색 배정', ($r['data']['department']['color'] ?? '') === '#52C0A1');
+check('부서 생성 + 첫 팔레트 색 배정', ($r['data']['department']['color'] ?? '') === '#8FD6C2');
 $r2 = $admin->call('department_create', ['teamId' => $teamId, 'name' => '기획']);
-check('두 번째 부서는 다음 색', ($r2['data']['department']['color'] ?? '') === '#FF9A56');
+check('두 번째 부서는 다음 색', ($r2['data']['department']['color'] ?? '') === '#FFC49B');
 $dept2 = $r2['data']['department']['id'];
 
 $r = $admin->call('person_create', ['teamId' => $teamId, 'name' => '김민수', 'departmentId' => $deptId, 'loginId' => 'minsu.kim']);
@@ -357,12 +357,16 @@ $dup = $export;
 $dup['relationships'][] = ['a' => $export['relationships'][0]['b'], 'b' => $export['relationships'][0]['a'], 'status' => 'social'];
 check('중복 쌍 거부', $admin->call('team_import', ['data' => $dup, 'name' => '중복팀'])['status'] === 400);
 check('실패한 가져오기는 저장되지 않음', count($admin->call('teams')['data']['teams']) === 3);
+// 예전 색상표 색(#52C0A1)으로 만든 파일도 새 파스텔 색으로 바꿔 가져온다
 $big = ['schemaVersion' => 1, 'departments' => [['id' => 'd1', 'name' => 'A', 'color' => '#52C0A1']], 'people' => [], 'relationships' => []];
 for ($i = 0; $i < 35; $i++) {
     $big['people'][] = ['id' => "p{$i}", 'name' => "사람{$i}", 'departmentId' => 'd1'];
 }
 check('30명 초과 파일은 maxMembers 없으면 거부', $admin->call('team_import', ['data' => $big, 'name' => '대형팀'])['status'] === 409);
-check('maxMembers 지정 시 가져오기', $admin->call('team_import', ['data' => $big, 'name' => '대형팀', 'maxMembers' => 40])['status'] === 200);
+$r = $admin->call('team_import', ['data' => $big, 'name' => '대형팀', 'maxMembers' => 40]);
+check('maxMembers 지정 시 가져오기', $r['status'] === 200);
+check('예전 색상은 새 파스텔 색으로 변환', $admin->call('team_data', null, ['teamId' => $r['data']['team']['id']])['data']['departments'][0]['color'] === '#8FD6C2');
+check('색상표 16색', count($admin->call('me')['data']['palette']) === 16);
 
 $log = $admin->call('audit_log')['data']['entries'];
 $actions = array_column($log, 'action');

@@ -155,14 +155,6 @@ function fmtDate(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** 색을 흰색과 섞어 파스텔 톤으로 (amount: 흰색 비율 0~1) */
-function pastel(hex, amount = 0.5) {
-  const n = parseInt(hex.slice(1), 16);
-  const mix = (c) => Math.round(c + (255 - c) * amount);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
 function fmtScore(n) {
   return n > 0 ? `+${n}` : String(n);
 }
@@ -752,7 +744,9 @@ function renderChart() {
       edges.classed('hover', false);
       hideTooltip();
     });
-  nodes.append('circle').attr('r', 6).attr('fill', (p) => deptColor(p.departmentId));
+  // 파스텔 부서색이 흰 바탕에서도 보이도록 같은 계열의 진한 테두리
+  nodes.append('circle').attr('r', 6.5).attr('fill', (p) => deptColor(p.departmentId))
+    .style('--node-stroke', (p) => d3.color(deptColor(p.departmentId)).darker(1.1).formatHex());
   nodes.append('text')
     .attr('dy', '0.32em')
     .attr('x', (p) => (pos.get(p.id).angle < 180 ? 10 : -10))
@@ -1002,7 +996,7 @@ function renderDeptStats() {
   for (const { d, n } of counts) {
     box.append(h('div', { class: 'stat-row', title: `${d.name}: ${n}명` }, [
       h('span', { class: 'name' }, [h('span', { class: 'dot', style: { background: d.color } }), d.name]),
-      h('div', { class: 'stat-bar' }, [h('span', { style: { width: `${(n / max) * 100}%`, background: pastel(d.color) } })]),
+      h('div', { class: 'stat-bar' }, [h('span', { style: { width: `${(n / max) * 100}%`, background: d.color } })]),
       h('span', { class: 'num', text: `${n}명` }),
     ]));
   }

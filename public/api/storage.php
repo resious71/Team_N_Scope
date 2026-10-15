@@ -29,10 +29,16 @@ const BACKUP_KEEP_DAYS = 14;
 const DEFAULT_ADMIN_LOGIN = 'admin';     // 관리자 계정이 하나도 없을 때 자동 생성
 const DEFAULT_ADMIN_PASSWORD = 'admin';  // 운영 전에 헤더의 '비밀번호 변경'으로 바꿀 것
 
+/**
+ * 부서 색상 (파스텔 16색). 새 부서는 이 순서대로 아직 쓰지 않은 색을 받으므로,
+ * 이웃한 색끼리 색상(hue)이 최대한 다르도록 섞어 두었다.
+ */
 const PALETTE = [
-    '#52C0A1', '#FF9A56', '#FF6B9D', '#C44569', '#6C63FF',
-    '#5DADE2', '#F39C12', '#E74C3C', '#AF7AC5', '#48C9B0',
+    '#8FD6C2', '#FFC49B', '#B5BEF5', '#FFDB8E', '#F8B4C8', '#93D8E0', '#F4A6A0', '#D8B4EC',
+    '#A8DDB0', '#EDB0DB', '#A6CFF2', '#E2CBA8', '#CDE8A0', '#E8B79E', '#BFC8D6', '#EEE89A',
 ];
+/** 1.0.0까지 쓰던 10색 — 이 색을 쓰는 부서는 새 색상표에서 겹치지 않는 색을 다시 배정받는다 */
+const LEGACY_COLORS = ['#52C0A1', '#FF9A56', '#FF6B9D', '#C44569', '#6C63FF', '#5DADE2', '#F39C12', '#E74C3C', '#AF7AC5', '#48C9B0'];
 const STATUS_SCORES = ['private' => 1, 'public' => 0, 'social' => -1];
 /** 부서원 직급: 팀장 / 부서장 / 부서원 */
 const POSITIONS = ['leader' => '팀장', 'head' => '부서장', 'member' => '부서원'];
@@ -257,6 +263,7 @@ function load_team(string $teamId): ?array
         return null;
     }
     $team += ['departments' => [], 'people' => [], 'relationships' => [], 'revision' => 0];
+    $team['departments'] = migrate_department_colors($team['departments']);
     return $team;
 }
 
@@ -431,10 +438,11 @@ function valid_position(mixed $p): string
 
 function valid_color(mixed $c): string
 {
-    if (!is_string($c) || !in_array(strtoupper($c), PALETTE, true)) {
+    $c = is_string($c) ? strtoupper($c) : null;
+    if ($c === null || !in_array($c, PALETTE, true)) {
         throw new ApiError(400, '부서 색상은 팔레트 색상 중 하나여야 합니다.');
     }
-    return strtoupper($c);
+    return $c;
 }
 
 // ---------------------------------------------------------------------------
@@ -453,6 +461,23 @@ function find_index(array $list, string $id): int
         }
     }
     return -1;
+}
+
+/**
+ * 색상표에 없는 색(1.0.0까지의 10색 등)을 쓰는 부서에 새 색상표의 색을 부서 순서대로 다시 배정한다.
+ * 이미 새 색을 쓰는 부서는 그대로 두고, 겹치지 않는 색부터 고른다. (다음 저장 때 파일에도 반영됨)
+ */
+function migrate_department_colors(array $departments): array
+{
+    $kept = array_values(array_filter($departments, fn($d) => in_array(strtoupper((string)($d['color'] ?? '')), PALETTE, true)));
+    foreach ($departments as &$d) {
+        if (!in_array(strtoupper((string)($d['color'] ?? '')), PALETTE, true)) {
+            $d['color'] = next_department_color($kept);
+            $kept[] = $d;
+        }
+    }
+    unset($d);
+    return $departments;
 }
 
 function next_department_color(array $departments): string

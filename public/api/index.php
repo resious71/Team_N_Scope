@@ -1125,7 +1125,9 @@ function act_team_import(array $input, array $ctx): array
                 throw new ApiError(400, "부서명이 중복됩니다: {$dname}");
             }
         }
-        $color = isset($d['color']) ? valid_color($d['color']) : next_department_color($departments);
+        // 예전 색상표의 색(1.0.0 이하에서 내보낸 파일)은 새 색상표에서 다시 배정
+        $legacy = is_string($d['color'] ?? null) && in_array(strtoupper($d['color']), LEGACY_COLORS, true);
+        $color = isset($d['color']) && !$legacy ? valid_color($d['color']) : next_department_color($departments);
         $deptMap[$oldId] = new_id('d');
         $departments[] = ['id' => $deptMap[$oldId], 'name' => $dname, 'color' => $color];
     }
