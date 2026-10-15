@@ -34,6 +34,20 @@ const PALETTE = [
 const STATUS_SCORES = ['private' => 1, 'public' => 0, 'social' => -1];
 /** 부서원 직급: 팀장 / 부서장 / 부서원 */
 const POSITIONS = ['leader' => '팀장', 'head' => '부서장', 'member' => '부서원'];
+/** 일괄 등록에서 받는 직급 표기 */
+const POSITION_ALIASES = ['' => 'member', '팀장' => 'leader', '부서장' => 'head', '부서원' => 'member',
+    'leader' => 'leader', 'head' => 'head', 'member' => 'member'];
+/** 활동 로그 분류 (action 이름 또는 접두사) */
+const AUDIT_CATEGORIES = [
+    'login' => ['login', 'login_failed', 'login_locked', 'login_inactive', 'logout', 'password_change', 'consent'],
+    'account' => ['account_'],
+    'team' => ['team_'],
+    'department' => ['department_'],
+    'person' => ['person_'],
+    'relationship' => ['relationship_'],
+    'admin' => ['admin_'],
+];
+
 const ID_PATTERN = '/^[A-Za-z0-9_-]{1,64}$/';
 const LOGIN_ID_PATTERN = '/^[a-z0-9_.-]{4,20}$/';
 
@@ -41,13 +55,14 @@ const LOGIN_ID_PATTERN = '/^[a-z0-9_.-]{4,20}$/';
  * 개인정보 안내문. 문구를 개정하면 PRIVACY_NOTICE_VERSION을 개정 시각으로 올린다.
  * consentedAt이 이 값보다 이전이면 재동의를 요구한다.
  */
-const PRIVACY_NOTICE_VERSION = '2026-10-01T00:00:00+09:00';
+const PRIVACY_NOTICE_VERSION = '2026-10-15T00:00:00+09:00';
 const PRIVACY_NOTICE = [
-    '이 서비스는 팀 내 관계를 시각화하기 위해 귀하가 입력한 관계 평가(사적·공적·사회적)를 수집합니다.',
-    '입력한 관계는 두 사람 모두의 점수에 반영되며, 점수와 순위 산출에 사용됩니다.',
-    '관리자는 모든 관계와 함께 입력자 및 수정 이력(누가, 언제 입력·수정했는지)을 열람할 수 있습니다.',
-    '부서원은 본인 점수만 볼 수 있으며, 다른 사람의 점수와 순위는 관리자만 조회합니다.',
-    '부서원 또는 팀이 삭제되면 관련 관계와 계정은 즉시 삭제됩니다. 백업은 14일, 활동 로그는 12개월간 보관 후 삭제됩니다.',
+    '이 서비스는 팀 내 관계를 시각화하기 위해 입력된 관계 평가(사적·공적·사회적)를 수집합니다.',
+    '관계는 두 사람 모두의 점수에 반영되며, 점수와 순위 산출에 사용됩니다.',
+    '관계는 당사자 본인뿐 아니라 팀장(팀 전체)과 부서장(자기 부서원 사이)도 입력·수정·삭제할 수 있습니다. 내 관계 목록에는 마지막으로 수정한 사람이 본인·상대방·팀장·부서장·관리자 중 누구인지 표시됩니다.',
+    '관리자는 모든 관계와 입력자, 관계별 변경 이력(누가, 언제, 어떻게 바꿨는지)과 점수 추이를 열람할 수 있습니다.',
+    '팀장은 팀 전체, 부서장은 자기 부서원의 관계와 점수·순위를 볼 수 있습니다. 일반 부서원은 자기 부서원의 이름과 본인 점수만 볼 수 있습니다.',
+    '부서원 또는 팀이 삭제되면 관련 관계·변경 이력과 계정은 즉시 삭제됩니다. 백업은 14일, 활동 로그는 12개월간 보관 후 삭제됩니다.',
     '평가 정보의 사용 목적 제한 등 세부 사항은 조직의 개인정보·인사 관련 정책을 따릅니다.',
 ];
 
@@ -89,7 +104,7 @@ function ensure_data_dirs(): void
         return;
     }
     $old = umask(0077);
-    foreach (['', '/teams', '/trash', '/audit'] as $sub) {
+    foreach (['', '/teams', '/trash', '/audit', '/history'] as $sub) {
         $dir = data_dir() . $sub;
         if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
             umask($old);
@@ -460,9 +475,27 @@ function position_of(?array $person): string
     return $person['position'] ?? 'member';
 }
 
+/** 팀장은 팀 전체, 부서장·부서원은 자기 부서만 본다. */
+function member_sees_whole_team(array $me): bool
+{
+    return position_of($me) === 'leader';
+}
+
+/** 부서원 계정에게 보이는 사람 ID 집합 (팀장: 전체 / 그 외: 자기 부서) */
+function member_visible_people(array $team, array $me): array
+{
+    $ids = [];
+    foreach ($team['people'] as $p) {
+        if (member_sees_whole_team($me) || $p['departmentId'] === $me['departmentId']) {
+            $ids[$p['id']] = true;
+        }
+    }
+    return $ids;
+}
+
 /**
  * 부서원 계정이 두 사람 사이 관계를 추가·수정·삭제할 수 있는지.
- * 팀장: 팀 전체 / 부서장: 한쪽 당사자가 자기 부서원 / 부서원: 본인이 포함된 관계만.
+ * 팀장: 팀 전체 / 부서장: 두 사람 모두 자기 부서원 / 부서원: 본인과 같은 부서원 사이의 관계만.
  */
 function member_can_manage(array $team, array $me, string $a, string $b): bool
 {
@@ -470,37 +503,168 @@ function member_can_manage(array $team, array $me, string $a, string $b): bool
     if ($pos === 'leader') {
         return true;
     }
-    if ($pos === 'head') {
-        $dept = $me['departmentId'];
-        $pa = person_of($team, $a);
-        $pb = person_of($team, $b);
-        return ($pa && $pa['departmentId'] === $dept) || ($pb && $pb['departmentId'] === $dept);
+    $visible = member_visible_people($team, $me);
+    if (!isset($visible[$a], $visible[$b])) {
+        return false;
     }
-    return $a === $me['id'] || $b === $me['id'];
+    return $pos === 'head' || $a === $me['id'] || $b === $me['id'];
 }
 
 /**
- * 부서원 계정에게 보내는 관계.
- * 팀장: 팀 전체 / 부서장: 한쪽 당사자가 자기 부서원 / 부서원: 공개 범위 own이면 본인 관계, team이면 자기 부서원이 포함된 관계.
+ * 부서원 계정에게 보내는 관계 (두 당사자가 모두 보이는 범위에 있어야 함).
+ * 팀장: 팀 전체 / 부서장: 자기 부서 안 / 부서원: 공개 범위 own이면 본인 관계, team이면 자기 부서 안의 관계.
  */
 function member_visible_relationships(array $team, array $me, string $viewScope): array
 {
-    $pos = position_of($me);
-    if ($pos === 'leader') {
-        return $team['relationships'];
-    }
-    $deptOf = [];
-    foreach ($team['people'] as $p) {
-        $deptOf[$p['id']] = $p['departmentId'];
-    }
-    $dept = $me['departmentId'];
-    $ownOnly = $pos === 'member' && $viewScope !== 'team';
-    return array_values(array_filter($team['relationships'], function ($r) use ($me, $dept, $deptOf, $ownOnly) {
-        if ($r['a'] === $me['id'] || $r['b'] === $me['id']) {
-            return true;
+    $visible = member_visible_people($team, $me);
+    $ownOnly = position_of($me) === 'member' && $viewScope !== 'team';
+    return array_values(array_filter($team['relationships'], function ($r) use ($me, $visible, $ownOnly) {
+        if (!isset($visible[$r['a']], $visible[$r['b']])) {
+            return false;
         }
-        return !$ownOnly && (($deptOf[$r['a']] ?? null) === $dept || ($deptOf[$r['b']] ?? null) === $dept);
+        return !$ownOnly || $r['a'] === $me['id'] || $r['b'] === $me['id'];
     }));
+}
+
+/**
+ * 직급 인원 제한: 팀당 팀장 1명, 부서당 부서장 1명.
+ * $people 안에서 $personId를 제외하고 같은 자리가 이미 있으면 409.
+ */
+function assert_position_available(array $people, string $position, string $departmentId, ?string $personId = null): void
+{
+    foreach ($people as $p) {
+        if ($p['id'] === $personId) {
+            continue;
+        }
+        $pos = position_of($p);
+        if ($position === 'leader' && $pos === 'leader') {
+            throw new ApiError(409, "이미 팀장({$p['name']})이 있습니다. 팀장은 팀당 1명이므로 먼저 기존 팀장의 직급을 바꾸세요.");
+        }
+        if ($position === 'head' && $pos === 'head' && $p['departmentId'] === $departmentId) {
+            throw new ApiError(409, "이 부서에는 이미 부서장({$p['name']})이 있습니다. 부서장은 부서당 1명이므로 먼저 기존 부서장의 직급을 바꾸세요.");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 관계 변경 이력 (data/history/{teamId}.jsonl) — 이력 조회·점수 추이에 사용
+// ---------------------------------------------------------------------------
+function history_path(string $teamId): string
+{
+    assert_id($teamId, '팀 ID');
+    return data_path('history/' . $teamId . '.jsonl');
+}
+
+/** 이력 파일이 없으면 현재 관계를 기준선으로 기록한다 (기능 도입 전 데이터·가져온 팀). 잠금 안에서 호출. */
+function history_ensure_baseline(array $team): void
+{
+    $path = history_path($team['teamId']);
+    if (is_file($path)) {
+        return;
+    }
+    $lines = '';
+    foreach ($team['relationships'] as $r) {
+        $lines .= json_encode([
+            'at' => $r['updatedAt'] ?? $r['createdAt'] ?? now_iso(), 'rel' => $r['id'], 'a' => $r['a'], 'b' => $r['b'],
+            'from' => null, 'to' => $r['status'], 'by' => $r['updatedBy'] ?? null, 'baseline' => true,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+    }
+    $old = umask(0077);
+    file_put_contents($path, $lines);
+    umask($old);
+}
+
+/** 이력 한 건 추가: $to가 null이면 삭제. */
+function history_append(string $teamId, array $rel, ?string $from, ?string $to, string $userId): void
+{
+    $line = json_encode([
+        'at' => now_iso(), 'rel' => $rel['id'], 'a' => $rel['a'], 'b' => $rel['b'],
+        'from' => $from, 'to' => $to, 'by' => $userId,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $old = umask(0077);
+    file_put_contents(history_path($teamId), $line . "\n", FILE_APPEND | LOCK_EX);
+    umask($old);
+}
+
+function history_read(string $teamId): array
+{
+    $path = history_path($teamId);
+    if (!is_file($path)) {
+        return [];
+    }
+    $out = [];
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $row = json_decode($line, true);
+        if (is_array($row)) {
+            $out[] = $row;
+        }
+    }
+    return $out;
+}
+
+/** 삭제된 부서원이 포함된 이력 제거 (부서원 삭제 시 관련 데이터 즉시 삭제). 잠금 안에서 호출. */
+function history_purge_people(string $teamId, array $personIds): void
+{
+    $path = history_path($teamId);
+    if (!is_file($path)) {
+        return;
+    }
+    $drop = array_flip($personIds);
+    $keep = array_filter(history_read($teamId), fn($e) => !isset($drop[$e['a']]) && !isset($drop[$e['b']]));
+    $lines = implode('', array_map(fn($e) => json_encode($e, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n", $keep));
+    $tmp = $path . '.tmp.' . bin2hex(random_bytes(4));
+    $old = umask(0077);
+    file_put_contents($tmp, $lines);
+    umask($old);
+    rename($tmp, $path);
+}
+
+/**
+ * 월말 기준 점수 추이 (최근 $months개월). 현재 부서원만 대상, 이력을 순서대로 재생해 계산한다.
+ * 반환: ['months' => ['2026-01', ...], 'scores' => [personId => [점수, ...]]]
+ */
+function score_trend(array $team, int $months = 12): array
+{
+    $events = history_read($team['teamId']);
+    if (!$events) {
+        $events = array_map(fn($r) => ['at' => $r['updatedAt'] ?? now_iso(), 'rel' => $r['id'], 'a' => $r['a'], 'b' => $r['b'], 'to' => $r['status']], $team['relationships']);
+    }
+    usort($events, fn($x, $y) => strcmp((string)$x['at'], (string)$y['at']));
+    $labels = [];
+    $ends = [];
+    for ($i = $months - 1; $i >= 0; $i--) {
+        $first = strtotime(date('Y-m-01') . " -{$i} months");
+        $labels[] = date('Y-m', $first);
+        $ends[] = strtotime(date('Y-m-t 23:59:59', $first));
+    }
+    $people = array_column($team['people'], 'id');
+    $scores = array_fill_keys($people, []);
+    $state = [];
+    $k = 0;
+    foreach ($ends as $end) {
+        while ($k < count($events) && strtotime((string)$events[$k]['at']) <= $end) {
+            $e = $events[$k++];
+            if ($e['to'] === null) {
+                unset($state[$e['rel']]);
+            } else {
+                $state[$e['rel']] = $e;
+            }
+        }
+        $month = array_fill_keys($people, 0);
+        foreach ($state as $e) {
+            $v = STATUS_SCORES[$e['to']] ?? 0;
+            if (isset($month[$e['a']])) {
+                $month[$e['a']] += $v;
+            }
+            if (isset($month[$e['b']])) {
+                $month[$e['b']] += $v;
+            }
+        }
+        foreach ($month as $pid => $v) {
+            $scores[$pid][] = $v;
+        }
+    }
+    return ['months' => $labels, 'scores' => $scores];
 }
 
 /** 2.6 점수 계산: 본인이 포함된 관계 점수 값의 합. 저장하지 않고 항상 계산한다. */

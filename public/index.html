@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Good Cop vs Bad Apple</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <script src="lib/d3.v7.min.js" defer></script>
   <script src="app.js" defer></script>
@@ -15,6 +16,7 @@
   <!-- 로그인 -->
   <section id="view-login" class="center-view" hidden>
     <form id="login-form" class="card auth-card" autocomplete="on">
+      <div class="brand-mark"><img src="favicon.svg" alt="" width="44" height="44"></div>
       <h1 class="app-title">Good Cop vs Bad Apple</h1>
       <label>로그인 ID<input id="login-id" name="username" autocomplete="username" required maxlength="40"></label>
       <label>비밀번호<input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="200"></label>
@@ -60,21 +62,21 @@
   <div id="view-app" hidden>
     <header class="app-header">
       <div class="header-left">
-        <h1 class="app-title">Good Cop vs Bad Apple</h1>
+        <h1 class="app-title"><img src="favicon.svg" alt="" width="24" height="24" class="brand-icon">Good Cop vs Bad Apple</h1>
         <select id="team-select" aria-label="팀 선택" hidden></select>
         <span id="team-name-fixed" class="team-fixed" hidden></span>
       </div>
       <div class="header-right">
         <span id="save-status" class="save-status" aria-live="polite"></span>
         <span id="user-label" class="user-label"></span>
-        <button type="button" id="btn-change-password" class="btn btn-sm">비밀번호 변경</button>
-        <button type="button" id="btn-logout" class="btn btn-sm">로그아웃</button>
+        <button type="button" id="btn-change-password" class="btn btn-sm btn-ghost"><span class="icon" data-icon="key" aria-hidden="true"></span>비밀번호 변경</button>
+        <button type="button" id="btn-logout" class="btn btn-sm btn-ghost"><span class="icon" data-icon="logout" aria-hidden="true"></span>로그아웃</button>
       </div>
     </header>
 
     <nav class="tabs" role="tablist">
-      <button type="button" class="tab active" role="tab" data-tab="diagram" aria-selected="true">관계도</button>
-      <button type="button" class="tab" role="tab" data-tab="admin" id="tab-btn-admin" aria-selected="false" hidden>관리자</button>
+      <button type="button" class="tab active" role="tab" data-tab="diagram" aria-selected="true"><span class="icon" data-icon="network" aria-hidden="true"></span>관계도</button>
+      <button type="button" class="tab" role="tab" data-tab="admin" id="tab-btn-admin" aria-selected="false" hidden><span class="icon" data-icon="shield" aria-hidden="true"></span>관리자</button>
     </nav>
 
     <main class="container">
@@ -104,6 +106,9 @@
                 <label for="zoom-slider">해상도</label>
                 <input type="range" id="zoom-slider" min="50" max="150" step="10" value="100">
                 <span id="zoom-value">100%</span>
+                <span class="spacer"></span>
+                <button type="button" id="export-png" class="btn btn-sm btn-ghost" title="현재 필터의 관계도를 PNG로 저장"><span class="icon" data-icon="image" aria-hidden="true"></span>PNG</button>
+                <button type="button" id="export-pdf" class="btn btn-sm btn-ghost" title="현재 필터의 관계도를 PDF로 저장"><span class="icon" data-icon="file" aria-hidden="true"></span>PDF</button>
               </div>
             </div>
             <div class="card legend-card">
@@ -123,7 +128,7 @@
             <!-- 부서원: 내 관계 -->
             <!-- 관리자: 순위 -->
             <div id="panel-ranking" class="card panel" hidden>
-              <h3>순위</h3>
+              <h3><span class="icon" data-icon="trophy" aria-hidden="true"></span>순위 <span id="rank-scope" class="muted scope-note"></span></h3>
               <div class="ranking">
                 <div><h4>상위 3명</h4><ol id="rank-top" class="rank-list top"></ol></div>
                 <div><h4>하위 3명</h4><ol id="rank-bottom" class="rank-list bottom"></ol></div>
@@ -131,14 +136,14 @@
             </div>
 
             <div class="card panel panel-info">
-              <h3>부서원 정보</h3>
+              <h3><span class="icon" data-icon="info" aria-hidden="true"></span>부서원 정보</h3>
               <select id="info-dept" aria-label="부서 선택"></select>
               <textarea id="info-members" readonly aria-label="부서 소속 인원"></textarea>
             </div>
 
             <!-- 부서원: 관계 관리 (부서원=본인 관계, 부서장=자기 부서원 관계, 팀장=팀 전체) -->
             <div id="panel-my-relations" class="card panel" hidden>
-              <h3>관계 관리 <span id="my-rel-scope" class="muted scope-note"></span></h3>
+              <h3><span class="icon" data-icon="link" aria-hidden="true"></span>관계 관리 <span id="my-rel-scope" class="muted scope-note"></span></h3>
               <p id="my-alone" class="muted" hidden>팀에 본인만 있어 관계를 추가할 수 없습니다.</p>
               <form id="my-rel-form" class="rel-form">
                 <div class="pair-row">
@@ -165,7 +170,7 @@
             </div>
 
             <div class="card panel panel-stats">
-              <h3>부서 통계</h3>
+              <h3><span class="icon" data-icon="bar" aria-hidden="true"></span>부서 통계</h3>
               <div id="dept-stats" class="dept-stats"></div>
             </div>
           </aside>
@@ -175,11 +180,13 @@
       <!-- 관리자 탭 -->
       <section id="tab-admin" class="tab-panel" hidden>
         <nav class="subtabs">
-          <button type="button" class="subtab active" data-sub="teams">팀 관리</button>
-          <button type="button" class="subtab" data-sub="depts">부서 관리</button>
-          <button type="button" class="subtab" data-sub="people">부서원 관리</button>
-          <button type="button" class="subtab" data-sub="rels">관계 관리</button>
-          <button type="button" class="subtab" data-sub="audit">활동 로그</button>
+          <button type="button" class="subtab active" data-sub="teams"><span class="icon" data-icon="users" aria-hidden="true"></span>팀 관리</button>
+          <button type="button" class="subtab" data-sub="depts"><span class="icon" data-icon="layers" aria-hidden="true"></span>부서 관리</button>
+          <button type="button" class="subtab" data-sub="people"><span class="icon" data-icon="user" aria-hidden="true"></span>부서원 관리</button>
+          <button type="button" class="subtab" data-sub="rels"><span class="icon" data-icon="link" aria-hidden="true"></span>관계 관리</button>
+          <button type="button" class="subtab" data-sub="trend"><span class="icon" data-icon="trending" aria-hidden="true"></span>점수 추이</button>
+          <button type="button" class="subtab" data-sub="audit"><span class="icon" data-icon="list" aria-hidden="true"></span>활동 로그</button>
+          <button type="button" class="subtab" data-sub="admins"><span class="icon" data-icon="shieldCheck" aria-hidden="true"></span>관리자 계정</button>
         </nav>
 
         <!-- 팀 관리 -->
@@ -199,10 +206,11 @@
                 <label>팀 이름<input id="team-edit-name" maxlength="30" required></label>
                 <label>부서원 관계도 공개 범위
                   <select id="team-edit-scope">
-                    <option value="own">본인 관계만 (own)</option>
-                    <option value="team">팀 전체 관계 (team)</option>
+                    <option value="own">본인 관계만</option>
+                    <option value="team">우리 부서 관계</option>
                   </select>
                 </label>
+                <p class="hint">직급이 부서원인 사람에게만 적용됩니다. 팀장은 팀 전체, 부서장은 자기 부서의 관계를 항상 봅니다.</p>
                 <label>부서원 인원 한도<input id="team-edit-max" type="number" min="1" required></label>
                 <p id="team-edit-max-hint" class="hint"></p>
                 <div class="row-end">
@@ -308,7 +316,18 @@
                 </div>
               </div>
             </form>
+            <form id="bulk-form" class="card">
+              <h3><span class="icon" data-icon="upload" aria-hidden="true"></span>일괄 등록 (CSV)</h3>
+              <p class="hint">열 순서: <strong>이름, 부서, 직급, 로그인ID</strong> · 직급은 팀장/부서장/부서원(비우면 부서원) · 없는 부서는 새로 만듭니다 · 로그인ID를 넣으면 계정도 발급 · 한 행이라도 오류가 있으면 전체가 등록되지 않습니다.</p>
+              <label>CSV 파일 (UTF-8 또는 엑셀 CSV)<input id="bulk-file" type="file" accept=".csv,text/csv"></label>
+              <label>또는 직접 붙여넣기<textarea id="bulk-text" rows="4" placeholder="김민수,개발,팀장,minsu.kim&#10;이지은,기획,부서장,&#10;박서준,기획,,"></textarea></label>
+              <div class="row-between">
+                <button type="button" id="bulk-template" class="btn btn-sm btn-ghost"><span class="icon" data-icon="download" aria-hidden="true"></span>양식 내려받기</button>
+                <button type="submit" class="btn btn-primary">일괄 등록</button>
+              </div>
+            </form>
           </div>
+          <p id="position-warning" class="warn-box needs-team" hidden></p>
           <div class="card needs-team">
             <div class="list-toolbar">
               <h3>부서원 목록 <span id="person-count" class="count-badge"></span></h3>
@@ -349,7 +368,7 @@
             </div>
             <div class="scroll-list">
               <table class="table selectable">
-                <thead><tr><th class="col-check"><input type="checkbox" id="rel-check-all" aria-label="전체 선택"></th><th>관계</th><th>상태</th><th>입력자</th><th>최종 수정자</th><th>수정일</th></tr></thead>
+                <thead><tr><th class="col-check"><input type="checkbox" id="rel-check-all" aria-label="전체 선택"></th><th>관계</th><th>상태</th><th>입력자</th><th>최종 수정자</th><th>수정일</th><th>이력</th></tr></thead>
                 <tbody id="admin-rel-table"></tbody>
               </table>
             </div>
@@ -357,18 +376,89 @@
         </div>
 
         <!-- 활동 로그 -->
+        <!-- 점수 추이 -->
+        <div class="sub-panel" data-sub="trend" hidden>
+          <p class="muted no-team-msg">먼저 팀을 선택하거나 만드세요.</p>
+          <div class="card needs-team">
+            <div class="list-toolbar">
+              <h3><span class="icon" data-icon="trending" aria-hidden="true"></span>월별 점수 추이</h3>
+              <select id="trend-months" aria-label="기간">
+                <option value="6">최근 6개월</option>
+                <option value="12" selected>최근 12개월</option>
+                <option value="24">최근 24개월</option>
+              </select>
+            </div>
+            <p class="hint">월말 기준 점수입니다 (관계 변경 이력을 재생해 계산). 최대 5명까지 비교할 수 있습니다.</p>
+            <div class="trend-picker">
+              <select id="trend-add" aria-label="비교할 부서원 추가"></select>
+              <div id="trend-chips" class="chips"></div>
+            </div>
+            <div id="trend-legend" class="trend-legend"></div>
+            <div id="trend-chart" class="trend-chart"></div>
+            <details class="table-view">
+              <summary>표로 보기</summary>
+              <div class="scroll-x"><table class="table" id="trend-table"></table></div>
+            </details>
+          </div>
+        </div>
+
+        <!-- 활동 로그 -->
         <div class="sub-panel" data-sub="audit" hidden>
           <div class="card">
-            <div class="list-toolbar">
-              <h3>최근 활동 로그 (100건)</h3>
-              <button type="button" id="audit-refresh" class="btn btn-sm">새로고침</button>
-            </div>
+            <form id="audit-filter" class="filter-bar">
+              <label>시작일<input type="date" id="audit-from"></label>
+              <label>종료일<input type="date" id="audit-to"></label>
+              <label>분류
+                <select id="audit-category">
+                  <option value="">전체</option>
+                  <option value="login">로그인·인증</option>
+                  <option value="account">부서원 계정</option>
+                  <option value="team">팀</option>
+                  <option value="department">부서</option>
+                  <option value="person">부서원</option>
+                  <option value="relationship">관계</option>
+                  <option value="admin">관리자 계정</option>
+                </select>
+              </label>
+              <label>사용자<input id="audit-user" placeholder="로그인 ID"></label>
+              <label class="grow">검색어<input id="audit-q" placeholder="대상·요약·팀 이름"></label>
+              <div class="filter-actions">
+                <button type="button" id="audit-reset" class="btn btn-sm btn-ghost">초기화</button>
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+              </div>
+            </form>
             <div class="scroll-list">
               <table class="table">
                 <thead><tr><th>시각</th><th>사용자</th><th>동작</th><th>팀</th><th>대상</th><th>요약</th></tr></thead>
                 <tbody id="audit-table"></tbody>
               </table>
             </div>
+            <div class="pager">
+              <span id="audit-info" class="muted"></span>
+              <span class="spacer"></span>
+              <button type="button" id="audit-prev" class="btn btn-sm">이전</button>
+              <span id="audit-page" class="muted"></span>
+              <button type="button" id="audit-next" class="btn btn-sm">다음</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 관리자 계정 -->
+        <div class="sub-panel" data-sub="admins" hidden>
+          <div class="admin-grid">
+            <form id="admin-create-form" class="card">
+              <h3><span class="icon" data-icon="shieldCheck" aria-hidden="true"></span>관리자 추가</h3>
+              <label>로그인 ID<input id="admin-create-login" maxlength="20" autocomplete="off" required></label>
+              <p class="hint">임시 비밀번호가 한 번만 표시되며, 첫 로그인 때 변경해야 합니다. 관리자는 모든 팀의 관계와 입력자를 볼 수 있으니 최소 인원만 두세요.</p>
+              <div class="row-end"><button type="submit" class="btn btn-primary">추가</button></div>
+            </form>
+          </div>
+          <div class="card">
+            <h3>관리자 목록</h3>
+            <table class="table">
+              <thead><tr><th>로그인 ID</th><th>상태</th><th>마지막 로그인</th><th>생성일</th><th class="col-actions">작업</th></tr></thead>
+              <tbody id="admin-table"></tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -384,6 +474,33 @@
     <div class="row-end">
       <button type="button" id="temp-pw-copy" class="btn btn-sm">복사</button>
       <button type="button" id="temp-pw-close" class="btn btn-primary btn-sm">확인</button>
+    </div>
+  </dialog>
+
+  <!-- 관계 변경 이력 -->
+  <dialog id="history-dialog" class="card wide-dialog">
+    <h3><span class="icon" data-icon="history" aria-hidden="true"></span>관계 변경 이력 · <span id="history-title"></span></h3>
+    <div class="scroll-list"><table class="table">
+      <thead><tr><th>시각</th><th>변경</th><th>변경자</th></tr></thead>
+      <tbody id="history-table"></tbody>
+    </table></div>
+    <div class="row-end"><button type="button" id="history-close" class="btn btn-primary btn-sm">닫기</button></div>
+  </dialog>
+
+  <!-- 일괄 등록 결과 (임시 비밀번호 1회 표시) -->
+  <dialog id="bulk-dialog" class="card wide-dialog">
+    <h3>일괄 등록 완료</h3>
+    <p id="bulk-summary"></p>
+    <div id="bulk-accounts">
+      <p>발급된 계정의 임시 비밀번호는 <strong>지금 한 번만</strong> 표시됩니다. CSV로 내려받아 안전하게 전달하세요.</p>
+      <div class="scroll-list"><table class="table">
+        <thead><tr><th>이름</th><th>로그인 ID</th><th>임시 비밀번호</th></tr></thead>
+        <tbody id="bulk-table"></tbody>
+      </table></div>
+    </div>
+    <div class="row-end">
+      <button type="button" id="bulk-download" class="btn btn-sm"><span class="icon" data-icon="download" aria-hidden="true"></span>CSV 내려받기</button>
+      <button type="button" id="bulk-close" class="btn btn-primary btn-sm">확인</button>
     </div>
   </dialog>
 

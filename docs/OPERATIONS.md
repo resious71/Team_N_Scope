@@ -111,7 +111,8 @@ post_max_size = 3M
 ## 3. 관리자 계정
 
 - 관리자 계정이 하나도 없으면 첫 요청 때 기본 관리자 **`admin` / `admin`** 이 자동 생성됩니다 (`storage.php`의 `DEFAULT_ADMIN_LOGIN`·`DEFAULT_ADMIN_PASSWORD`). 첫 로그인 시 변경을 강제하지 않으므로, **배포 직후 바로 로그인해 비밀번호를 바꾸세요.** 바꾸기 전에는 서버 주소를 아는 누구나 관리자로 로그인할 수 있습니다.
-- 그 밖의 관리자 생성·초기화·잠금 해제는 서버 CLI로 합니다:
+- 관리자 추가·비밀번호 초기화·잠금 해제·활성/비활성은 **관리자 탭 > 관리자 계정**에서 할 수 있습니다 (본인 비활성화 불가, 활성 관리자는 최소 1명 유지).
+- 웹에 로그인할 수 없을 때(모든 관리자가 잠김·비밀번호 분실)는 서버 CLI를 씁니다:
 
 ```bash
 sudo -u www-data php tools/admin_cli.php create-admin <loginId> [--generate]
