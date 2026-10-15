@@ -165,12 +165,13 @@ button:focus-visible, .select-list li:focus-visible, .tab:focus-visible, .subtab
 .chart-column { flex: 0 0 auto; width: 832px; max-width: 100%; display: flex; flex-direction: column; gap: 12px; }
 .side-column { flex: 1 1 320px; min-width: 280px; display: flex; flex-direction: column; gap: 12px; }
 
-.chart-card { padding: 12px 14px; }
+.chart-card { padding: 10px 14px 6px; }
 .chart-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .chart-toolbar input { flex: 1; min-width: 120px; }
 .chart-toolbar select { max-width: 200px; }
 .my-score { font-weight: 650; white-space: nowrap; padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--primary-text); font-size: 13px; }
-.chart-scroll { width: 100%; max-width: 800px; height: 65vh; overflow: hidden; position: relative; margin: 0 auto; }
+/* 화면 한 장에 들어가도록: 전체 높이 - (헤더·탭·여백·도구줄·슬라이더·관계 상태 카드 ≈ 380px) */
+.chart-scroll { width: 100%; max-width: 800px; height: clamp(380px, calc(100vh - 380px), 800px); overflow: hidden; position: relative; margin: 0 auto; }
 .chart-scroll.scrollable { overflow: auto; }
 .chart-scroll svg { display: block; margin: 0 auto; }
 .chart-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 20px; }
@@ -184,7 +185,8 @@ button:focus-visible, .select-list li:focus-visible, .tab:focus-visible, .subtab
 #zoom-slider::-moz-range-track { height: 6px; border-radius: 999px; background: #E0EEFB; }
 #zoom-slider::-moz-range-progress { height: 6px; border-radius: 999px; background: #C4DFF7; }
 
-.legend-card { height: calc(23vh - 30px); min-height: 110px; overflow: auto; display: flex; gap: 28px; padding: 12px 16px; }
+.legend-card { display: flex; gap: 28px; padding: 10px 16px; }
+.legend-card .hint { margin: 4px 0 0; }
 .legend-section { min-width: 0; }
 .legend-section h3 { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
 .legend-status { display: flex; flex-direction: column; gap: 4px; }
@@ -235,18 +237,24 @@ button:focus-visible, .select-list li:focus-visible, .tab:focus-visible, .subtab
 #panel-my-relations { display: flex; flex-direction: column; max-height: 60vh; }
 
 /* 좌우 배치일 때 오른쪽 열 높이를 왼쪽 열(관계 상태 카드 아래)에 맞춤 — 남는 높이는 유동 카드가 흡수 */
-.side-column.aligned { min-height: 0; }
+.side-column.aligned { min-height: 0; overflow-y: auto; }
 .side-column.aligned > .card { flex: 0 0 auto; }
-.side-column.aligned.admin > .panel-info,
-.side-column.aligned.member > #panel-my-relations { flex: 1 1 0; min-height: 0; height: auto; max-height: none; }
-/* 부서 통계는 왼쪽 관계 상태 카드(.legend-card)와 같은 높이 */
-.side-column.aligned > .panel-stats { height: calc(23vh - 30px); min-height: 110px; }
+.side-column.aligned.admin > .panel-info { flex: 1 1 0; min-height: 0; height: auto; max-height: none; }
+/* 부서원 화면: 부서원 정보와 관계 관리가 남는 높이를 1:2로 나눔 (관계 관리는 최소 높이 보장) */
+.side-column.aligned.member > .panel-info { flex: 1 1 0; min-height: 140px; height: auto; overflow: hidden; }
+.side-column.aligned.member > #panel-my-relations { flex: 2 1 0; min-height: 290px; height: auto; max-height: none; }
+.side-column.aligned .panel-info textarea { min-height: 36px; }
+/* 부서 통계는 왼쪽 관계 상태 카드(.legend-card)와 같은 높이 (JS에서 실제 높이를 맞춤) */
+.side-column.aligned > .panel-stats { min-height: 0; }
 .rel-form label { margin-bottom: 6px; }
 .status-radios { border: 0; padding: 0; margin: 6px 0; display: flex; gap: 14px; flex-wrap: nowrap; }
 .status-radios label { flex-direction: row; align-items: center; gap: 5px; margin: 0; white-space: nowrap; font-size: 13px; cursor: pointer; font-weight: 400; }
 .list-toolbar { display: flex; align-items: center; gap: 8px; margin: 10px 0 8px; flex-wrap: wrap; }
 .list-toolbar h3 { margin: 0; flex: 1; }
-.list-toolbar input[type="search"] { flex: 1; min-width: 140px; }
+.list-toolbar input[type="search"] { flex: 1; min-width: 120px; }
+#panel-my-relations .list-toolbar { flex-wrap: nowrap; }
+#panel-my-relations .list-toolbar #my-rel-count { font-size: 12px; white-space: nowrap; }
+#panel-my-relations .select-list { margin-bottom: 0; }
 
 .select-list { list-style: none; margin: 0 0 8px; padding: 0; overflow: auto; flex: 1; min-height: 60px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .select-list li { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f1f3f6; cursor: pointer; }
@@ -274,8 +282,10 @@ button:focus-visible, .select-list li:focus-visible, .tab:focus-visible, .subtab
 .scope-note { font-size: 12px; font-weight: 400; color: var(--muted); }
 
 .ranking { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.ranking h4 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 600; }
-.rank-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; }
+.ranking h4 { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.rank-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+#panel-ranking { padding-top: 12px; padding-bottom: 12px; }
+#panel-ranking h3 { margin-bottom: 6px; }
 .rank-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .rank-badge { width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .rank-list.top .rank-badge { background: #BFDBFE; color: #1E40AF; }
@@ -364,6 +374,11 @@ dialog::backdrop { background: rgba(17, 24, 39, .35); backdrop-filter: blur(2px)
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: var(--radius-sm); z-index: 100; max-width: 90vw; box-shadow: var(--shadow-lg); font-size: 13px; }
 .toast.error { background: #b91c1c; }
+
+/* 낮은 화면(노트북 등): 오른쪽 카드가 넘치지 않도록 부서원 정보 카드를 줄임 */
+@media (max-height: 820px) {
+  .panel-info { height: 16vh; min-height: 110px; }
+}
 
 /* 반응형 */
 @media (max-width: 1400px) {

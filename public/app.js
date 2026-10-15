@@ -609,6 +609,9 @@ function alignSideColumn() {
   const sideBySide = left.offsetHeight > 0 && Math.abs(left.offsetTop - side.offsetTop) < 2;
   side.classList.toggle('aligned', sideBySide);
   side.style.height = sideBySide ? `${left.offsetHeight}px` : '';
+  // 부서 통계 카드 = 관계 상태 카드 높이 (위·아래 줄 맞춤)
+  const legend = document.querySelector('.legend-card');
+  document.querySelector('.panel-stats').style.height = sideBySide ? `${legend.offsetHeight}px` : '';
 }
 
 function renderAll() {
