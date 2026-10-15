@@ -95,6 +95,7 @@ try {
         throw new ApiError(400, "이 요청은 {$method} 메서드만 허용합니다.");
     }
     ensure_data_dirs();
+    ensure_default_admin();
     $input = $method === 'POST' ? read_body($action) : $_GET;
 
     if ($access === 'public') {

@@ -24,6 +24,8 @@ const IMPORT_MAX_BYTES = 2 * 1024 * 1024; // 팀 가져오기 한도
 const AUDIT_VIEW_LIMIT = 100;
 const AUDIT_RETENTION_MONTHS = 12;       // 운영 정책에 맞게 조정
 const BACKUP_KEEP_DAYS = 14;
+const DEFAULT_ADMIN_LOGIN = 'admin';     // 관리자 계정이 하나도 없을 때 자동 생성
+const DEFAULT_ADMIN_PASSWORD = 'admin';  // 운영 전에 헤더의 '비밀번호 변경'으로 바꿀 것
 
 const PALETTE = [
     '#52C0A1', '#FF9A56', '#FF6B9D', '#C44569', '#6C63FF',
@@ -269,6 +271,44 @@ function new_team_document(string $teamId): array
         'people' => [],
         'relationships' => [],
     ];
+}
+
+/**
+ * 관리자 계정이 하나도 없으면 기본 관리자(admin / admin)를 만든다.
+ * 첫 로그인 시 비밀번호 변경은 강제하지 않는다 (개인정보 안내 동의는 필요).
+ */
+function ensure_default_admin(): void
+{
+    $hasAdmin = fn(array $doc) => (bool)array_filter($doc['users'], fn($u) => $u['role'] === 'admin');
+    if ($hasAdmin(load_users())) {
+        return;
+    }
+    with_lock(function () use ($hasAdmin) {
+        $doc = load_users();
+        if ($hasAdmin($doc)) {
+            return;
+        }
+        foreach ($doc['users'] as $u) {
+            if (strtolower($u['loginId']) === DEFAULT_ADMIN_LOGIN) {
+                error_log('[gcba] default admin not created: login ID "admin" is used by a member account');
+                return;
+            }
+        }
+        $doc['users'][] = [
+            'id' => new_id('u'),
+            'loginId' => DEFAULT_ADMIN_LOGIN,
+            'passwordHash' => hash_password(DEFAULT_ADMIN_PASSWORD),
+            'role' => 'admin',
+            'teamId' => null,
+            'personId' => null,
+            'active' => true,
+            'mustChangePassword' => false,
+            'consentedAt' => null,
+            'createdAt' => now_iso(),
+        ];
+        save_users($doc);
+        audit(null, 'admin_create_default', null, DEFAULT_ADMIN_LOGIN, '기본 관리자 자동 생성');
+    });
 }
 
 // ---------------------------------------------------------------------------

@@ -30,10 +30,11 @@ data/                런타임 데이터 (git 제외, 최초 요청 시 자동 �
 ## 빠르게 실행하기 (개발)
 
 ```bash
-php tools/admin_cli.php create-admin admin          # 비밀번호 입력 (또는 --generate로 임시 비밀번호)
 php -S localhost:8000 router.php
-# http://localhost:8000 접속 → admin 로그인 → 개인정보 동의 → 관리자 탭 > 팀 관리에서 "샘플 데이터 생성"으로 팀 추가
+# http://localhost:8000 접속 → admin / admin 로그인 → 개인정보 동의 → 관리자 탭 > 팀 관리에서 "샘플 데이터 생성"으로 팀 추가
 ```
+
+관리자 계정이 하나도 없으면 첫 요청 때 **기본 관리자 `admin` / 비밀번호 `admin`** 이 자동으로 만들어집니다 (첫 로그인 시 비밀번호 변경은 강제하지 않음). 누구나 추측할 수 있는 비밀번호이므로 **운영 서버에서는 반드시 헤더의 "비밀번호 변경"으로 바꾸세요.** 추가 관리자는 `php tools/admin_cli.php create-admin <loginId>`로 만듭니다.
 
 Apache(XAMPP 등)에서는 프로젝트 폴더를 웹 폴더 아래에 두고 `http://서버/Team_N_Scope/`처럼 폴더 주소로 열면 `index.php`가 바로 실행됩니다. 이때 `data/`가 웹 폴더 안에 있게 되므로 `.htaccess`가 적용되도록 `AllowOverride All`(최소 `FileInfo AuthConfig Indexes`)이 필요합니다. 자세한 내용은 운영 문서를 참고하세요.
 

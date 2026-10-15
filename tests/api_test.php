@@ -97,22 +97,26 @@ final class Client
     }
 }
 
-// --- 1단계: CLI로 관리자 생성 ------------------------------------------------
+// --- 1단계: 기본 관리자·CLI ---------------------------------------------------
 echo "1단계: 저장소·CLI\n";
-$out = shell_exec(PHP_BINARY . ' ' . escapeshellarg("{$root}/tools/admin_cli.php") . ' create-admin admin --generate 2>&1');
-preg_match('/임시 비밀번호: (\S+)/u', (string)$out, $m);
-check('CLI로 관리자 생성', isset($m[1]), (string)$out);
-$adminTemp = $m[1] ?? '';
-
 $admin = new Client($base);
-$r = $admin->login('admin', $adminTemp);
-check('관리자 로그인', $r['status'] === 200, json_encode($r['json'], JSON_UNESCAPED_UNICODE));
-$r = $admin->call('teams');
+$r = $admin->login('admin', 'admin');
+check('기본 관리자(admin/admin) 자동 생성·로그인, 비밀번호 변경 강제 없음',
+    $r['status'] === 200 && $r['data']['user']['mustChangePassword'] === false,
+    json_encode($r['json'], JSON_UNESCAPED_UNICODE));
+$out = shell_exec(PHP_BINARY . ' ' . escapeshellarg("{$root}/tools/admin_cli.php") . ' create-admin admin2 --generate 2>&1');
+preg_match('/임시 비밀번호: (\S+)/u', (string)$out, $m);
+check('CLI로 관리자 추가 생성', isset($m[1]), (string)$out);
+$admin2Temp = $m[1] ?? '';
+$tempAdmin = new Client($base);
+check('CLI로 만든 관리자 로그인', $tempAdmin->login('admin2', $admin2Temp)['status'] === 200);
+$r = $tempAdmin->call('teams');
 check('임시 비밀번호 상태에서 다른 기능 차단(403)', $r['status'] === 403 && ($r['json']['code'] ?? '') === 'PASSWORD_CHANGE_REQUIRED');
-$r = $admin->call('password_change', ['currentPassword' => $adminTemp, 'newPassword' => 'short']);
+$r = $tempAdmin->call('password_change', ['currentPassword' => $admin2Temp, 'newPassword' => 'short']);
 check('비밀번호 정책 위반 거부(400)', $r['status'] === 400);
-$r = $admin->call('password_change', ['currentPassword' => $adminTemp, 'newPassword' => 'Admin1234']);
+$r = $tempAdmin->call('password_change', ['currentPassword' => $admin2Temp, 'newPassword' => 'Admin2345']);
 check('비밀번호 변경', $r['status'] === 200);
+$admin->call('password_change', ['currentPassword' => 'admin', 'newPassword' => 'Admin1234']);
 $r = $admin->call('teams');
 check('미동의 상태에서 다른 기능 차단(403)', $r['status'] === 403 && ($r['json']['code'] ?? '') === 'CONSENT_REQUIRED');
 $admin->call('consent', []);
@@ -298,6 +302,7 @@ $handles = [];
 $jarFile = tempnam(sys_get_temp_dir(), 'jar');
 $admin2 = new Client($base);
 $admin2->login('admin', 'Admin1234');
+check('관리자가 있으면 기본 관리자를 다시 만들지 않음', count(array_filter(json_decode(file_get_contents("{$dataDir}/users.json"), true)['users'], fn($u) => $u['loginId'] === 'admin')) === 1);
 $ref = new ReflectionProperty(Client::class, 'jar');
 $jar = $ref->getValue($admin2);
 for ($i = 0; $i < 40; $i++) {

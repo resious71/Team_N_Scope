@@ -25,7 +25,7 @@ const AUDIT_LABELS = {
   person_create: '부서원 추가', person_update: '부서원 수정', person_delete: '부서원 삭제',
   account_create: '계정 발급', account_reset_password: '비밀번호 초기화', account_activate: '계정 활성화', account_deactivate: '계정 비활성화', account_unlock: '잠금 해제',
   relationship_create: '관계 추가', relationship_update: '관계 수정', relationship_delete: '관계 삭제',
-  admin_create_cli: '관리자 생성(CLI)', admin_reset_password_cli: '관리자 비밀번호 초기화(CLI)', admin_unlock_cli: '관리자 잠금 해제(CLI)',
+  admin_create_default: '기본 관리자 생성', admin_create_cli: '관리자 생성(CLI)', admin_reset_password_cli: '관리자 비밀번호 초기화(CLI)', admin_unlock_cli: '관리자 잠금 해제(CLI)',
 };
 
 // ---------------------------------------------------------------------------

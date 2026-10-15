@@ -108,7 +108,10 @@ post_max_size = 3M
 
 앱도 실행 시 세션 관련 값을 직접 설정하지만, 서버 기본값을 맞춰 두면 다른 PHP 앱의 세션 GC가 먼저 세션을 지우는 일을 막을 수 있습니다. 세션 저장 경로를 이 앱 전용으로 분리하는 것을 권장합니다 (`session.save_path`).
 
-## 3. 관리자 계정 (CLI 전용, 서버 셸 필요)
+## 3. 관리자 계정
+
+- 관리자 계정이 하나도 없으면 첫 요청 때 기본 관리자 **`admin` / `admin`** 이 자동 생성됩니다 (`storage.php`의 `DEFAULT_ADMIN_LOGIN`·`DEFAULT_ADMIN_PASSWORD`). 첫 로그인 시 변경을 강제하지 않으므로, **배포 직후 바로 로그인해 비밀번호를 바꾸세요.** 바꾸기 전에는 서버 주소를 아는 누구나 관리자로 로그인할 수 있습니다.
+- 그 밖의 관리자 생성·초기화·잠금 해제는 서버 CLI로 합니다:
 
 ```bash
 sudo -u www-data php tools/admin_cli.php create-admin <loginId> [--generate]
