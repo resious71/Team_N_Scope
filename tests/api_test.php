@@ -6,6 +6,11 @@
  */
 declare(strict_types=1);
 
+if (php_sapi_name() !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 $root = dirname(__DIR__);
 $dataDir = sys_get_temp_dir() . '/gcba-test-' . bin2hex(random_bytes(4));
 $port = 18000 + random_int(0, 999);

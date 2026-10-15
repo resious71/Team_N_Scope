@@ -136,7 +136,7 @@ class ApiError extends Error {
 }
 
 async function api(action, { method = 'GET', params = {}, body = null } = {}) {
-  const url = new URL('api/index.php', location.href);
+  const url = new URL('api/index.php', document.baseURI);
   url.searchParams.set('action', action);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);

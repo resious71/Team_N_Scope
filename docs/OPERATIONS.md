@@ -16,6 +16,14 @@
 
 ## 2. 웹 서버 설정
 
+배치 방식은 두 가지입니다.
+
+- **A. 프로젝트 폴더를 그대로 웹에 두기 (간편)**: `htdocs/Team_N_Scope/`처럼 두고 `https://서버/Team_N_Scope/`로 접속하면 루트의 `index.php`가 앱을 띄웁니다. `data/`가 웹 폴더 안에 있으므로 루트 `.htaccess`, `data/.htaccess`(자동 생성), `tools/.htaccess`, `tests/.htaccess`가 반드시 적용되어야 합니다.
+  - Apache: 해당 디렉터리에 `AllowOverride All`을 설정하고 `mod_alias`를 사용합니다. 배포 후 `https://서버/Team_N_Scope/data/users.json`이 **404 또는 403**인지 꼭 확인하세요.
+  - nginx는 `.htaccess`를 읽지 않으므로 `location ~ /Team_N_Scope/(data|tools|tests|backups|docs|\.git)(/|$) { deny all; }`과 `index index.php;`를 직접 설정합니다.
+  - 개발용 PHP 내장 서버: `php -S localhost:8000 router.php`
+- **B. document root를 `public/`으로 지정 (권장, 아래 예시)**: `data/`가 웹에 전혀 노출되지 않아 가장 안전합니다.
+
 ### nginx + PHP-FPM
 
 ```nginx

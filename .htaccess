@@ -1,0 +1,9 @@
+# Apache: 프로젝트 폴더를 열면 index.php 실행
+DirectoryIndex index.php
+
+# 웹에서 접근하면 안 되는 폴더·파일 차단 (data/에는 비밀번호 해시와 관계 평가가 있음)
+RedirectMatch 404 /(data|tools|tests|backups|docs|\.git)(/|$)
+RedirectMatch 404 /(router\.php|README\.md|\.gitignore)$
+<FilesMatch "^(auth|storage)\.php$">
+    Require all denied
+</FilesMatch>

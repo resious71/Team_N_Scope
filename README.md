@@ -10,7 +10,10 @@
 ## 폴더 구조
 
 ```
-public/              웹 루트 (document root)
+index.php            프로젝트 폴더 진입점 (폴더를 열면 앱 화면 표시)
+.htaccess            Apache: index.php 기본 문서, data/·tools/·tests/ 등 웹 접근 차단
+router.php           PHP 내장 서버용 라우터 (같은 차단 규칙)
+public/              화면·API 파일 (document root로 직접 지정해도 동작)
   index.html, style.css, app.js
   lib/d3.v7.min.js   D3 v7.9.0 (CSP 적용을 위해 로컬 배치)
   api/index.php      API 진입점 (action 분기·권한 검사)
@@ -21,16 +24,18 @@ tools/
   backup.php         data/ 백업 (cron)
 tests/api_test.php   API 통합 테스트 (수용 기준 검사)
 docs/OPERATIONS.md   운영 문서 (웹 서버 설정, 백업·복구, 보안)
-data/                런타임 데이터 (웹 루트 밖, git 제외, 최초 요청 시 자동 생성)
+data/                런타임 데이터 (git 제외, 최초 요청 시 자동 생성, .htaccess로 웹 접근 차단)
 ```
 
 ## 빠르게 실행하기 (개발)
 
 ```bash
 php tools/admin_cli.php create-admin admin          # 비밀번호 입력 (또는 --generate로 임시 비밀번호)
-php -S localhost:8000 -t public
+php -S localhost:8000 router.php
 # http://localhost:8000 접속 → admin 로그인 → 개인정보 동의 → 관리자 탭 > 팀 관리에서 "샘플 데이터 생성"으로 팀 추가
 ```
+
+Apache(XAMPP 등)에서는 프로젝트 폴더를 웹 폴더 아래에 두고 `http://서버/Team_N_Scope/`처럼 폴더 주소로 열면 `index.php`가 바로 실행됩니다. 이때 `data/`가 웹 폴더 안에 있게 되므로 `.htaccess`가 적용되도록 `AllowOverride All`(최소 `FileInfo AuthConfig Indexes`)이 필요합니다. 자세한 내용은 운영 문서를 참고하세요.
 
 데이터 폴더 위치는 환경 변수 `GCBA_DATA_DIR`로 바꿀 수 있습니다 (기본값: 저장소 루트의 `data/`).
 

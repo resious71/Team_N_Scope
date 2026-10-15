@@ -92,6 +92,11 @@ function ensure_data_dirs(): void
             throw new ApiError(500, '데이터 폴더를 만들 수 없습니다.');
         }
     }
+    // data/가 웹에 노출된 배치에서도 Apache가 직접 접근을 막도록
+    $ht = data_path('.htaccess');
+    if (!file_exists($ht)) {
+        @file_put_contents($ht, "Require all denied\n");
+    }
     $lock = data_path('.lock');
     if (!file_exists($lock)) {
         @touch($lock);
