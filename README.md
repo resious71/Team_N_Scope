@@ -6,7 +6,7 @@
 
 **팀 내 인간관계를 원형 관계도로 시각화하는 다중 사용자 웹 애플리케이션**
 
-[![Release](https://img.shields.io/badge/release-v1.0.0-4f7cf0)](https://github.com/resious71/Team_N_Scope/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/badge/release-v1.1.0-4a6db8)](https://github.com/resious71/Team_N_Scope/releases/tag/v1.1.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![PHP](https://img.shields.io/badge/PHP-8.1%2B-777bb4?logo=php&logoColor=white)](https://www.php.net/)
 [![D3.js](https://img.shields.io/badge/D3.js-v7-f9a03c?logo=d3dotjs&logoColor=white)](https://d3js.org/)
