@@ -31,6 +31,7 @@ PR을 보내기 전에 API 통합 테스트가 모두 통과하는지 확인해 
 
 ```bash
 php tests/api_test.php
+php tests/migrate_test.php
 ```
 
 임시 데이터 폴더로 서버를 띄워 인증·권한·저장·백업까지 검사합니다. 서버 로그가 필요하면 `GCBA_TEST_LOG=/tmp/test.log`를 지정하세요.
