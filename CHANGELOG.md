@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-16
+
+관계 평가 구조와 열람 권한을 바꾼 릴리스입니다. 기존 데이터는 자동 변환되며, `tools/migrate.php`로 백업·보고와 함께 변환할 수 있습니다.
+
 ### 추가
 - **이전 버전 데이터 마이그레이션 도구** `tools/migrate.php`
   - 계정·팀·부서·인력·관계를 현재 형식으로 변환하고 결과를 보고 (`--dry-run`으로 미리 확인)
@@ -71,6 +75,7 @@
 - 기본 관리자 계정 자동 생성 (`admin` / `admin`, 관리자가 하나도 없을 때)
 - API 통합 테스트 108개 (`tests/api_test.php`)
 
-[Unreleased]: https://github.com/resious71/Team_N_Scope/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/resious71/Team_N_Scope/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/resious71/Team_N_Scope/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/resious71/Team_N_Scope/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/resious71/Team_N_Scope/releases/tag/v1.0.0
