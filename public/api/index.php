@@ -594,12 +594,23 @@ function act_team_data(array $input, array $ctx): array
     $out['people'] = array_values(array_map(fn($p) => [
         'id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId'], 'position' => position_of($p),
     ] + ($showScores ? ['score' => $scores[$p['id']]] : []), array_filter($team['people'], fn($p) => isset($visible[$p['id']]))));
-    // 관리자가 아니면(팀장·부서장 포함) 본인이 등록한 평가만 (상태도 본인 평가)
-    $out['relationships'] = array_values(array_map(fn($r) => [
-        'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'],
-        'status' => $r['evals'][$me]['status'], 'mine' => $r['evals'][$me]['status'],
-        'updatedAt' => $r['evals'][$me]['at'] ?? $r['updatedAt'],
-    ], member_visible_relationships($team, $mePerson)));
+    $rels = member_visible_relationships($team, $mePerson);
+    if ($pos === 'member') {
+        // 부서원: 본인이 등록한 평가만 (상태도 본인 평가)
+        $out['relationships'] = array_values(array_map(fn($r) => [
+            'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'],
+            'status' => $r['evals'][$me]['status'], 'mine' => $r['evals'][$me]['status'],
+            'updatedAt' => $r['evals'][$me]['at'] ?? $r['updatedAt'],
+        ], $rels));
+    } else {
+        // 팀장(팀 전체)·부서장(자기 부서): 범위 안 모든 관계를 쌍의 낮은 값으로 + 본인 평가(수정 폼용)
+        // 쌍마다 누가 어떤 평가를 했는지는 관리자만 본다.
+        $out['relationships'] = array_values(array_map(fn($r) => [
+            'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'], 'status' => $r['status'],
+            'mine' => $r['evals'][$me]['status'] ?? null,
+            'updatedAt' => $r['updatedAt'],
+        ], $rels));
+    }
     $out['me'] = [
         'personId' => $me,
         'departmentId' => $mePerson['departmentId'],

@@ -825,7 +825,7 @@ function hideTooltip() {
 // ---- 범례 ----------------------------------------------------------------
 function renderLegend() {
   // 부서원은 본인 평가만 보므로 "낮은 값으로 표시" 안내가 해당하지 않음
-  $('legend-eval-hint').hidden = myPosition() !== 'admin';
+  $('legend-eval-hint').hidden = myPosition() === 'member';
   const box = clear($('legend-status'));
   for (const key of STATUS_KEYS) {
     const cb = h('input', { type: 'checkbox', class: key, checked: S.statusFilter[key] });
@@ -909,7 +909,9 @@ function renderMyPanel() {
   renderStatusRadios($('my-rel-status'), 'my-status');
   syncMyForm(false);
 
-  const manageable = S.data.relationships.filter((r) => canManagePair(r.a, r.b));
+  // 관리자: 모든 관계 / 그 외: 본인이 입력한 평가 (팀장·부서장은 관계도에서 남의 관계를 보기만 함)
+  const manageable = S.data.relationships.filter((r) => canManagePair(r.a, r.b) && (pos === 'admin' || r.mine));
+  const shownStatus = (r) => (pos === 'admin' ? r.status : r.mine);
   const mine = myRelationships();
   $('my-rel-count').textContent = pos !== 'admin'
     ? `입력한 관계 ${mine.length} / 최대 ${Math.max(S.data.people.length - 1, 0)}`
@@ -923,7 +925,7 @@ function renderMyPanel() {
       return { r, first, second, label: involvesMe ? `나 ↔ ${personName(second)}` : `${personName(first)} ↔ ${personName(second)}` };
     })
     .filter((x) => !q || personName(x.first).toLowerCase().includes(q) || personName(x.second).toLowerCase().includes(q))
-    .filter((x) => !S.myRelStatus || x.r.status === S.myRelStatus)
+    .filter((x) => !S.myRelStatus || shownStatus(x.r) === S.myRelStatus)
     .sort((x, y) => collator.compare(x.label, y.label));
   const list = clear($('my-rel-list'));
   if (!rows.length) list.append(h('li', { class: 'empty', text: manageable.length ? '검색 결과가 없습니다.' : '아직 입력한 관계가 없습니다.' }));
@@ -949,7 +951,7 @@ function renderMyPanel() {
       h('span', { class: 'dot', style: { background: deptColor(other ? other.departmentId : '') } }),
       h('span', { class: 'grow', text: label }),
       r.updatedByLabel ? h('span', { class: 'by', text: `수정: ${r.updatedByLabel}` }) : null,
-      h('span', { class: `status-chip ${r.status}`, text: STATUS[r.status].label }),
+      h('span', { class: `status-chip ${shownStatus(r)}`, text: STATUS[shownStatus(r)].label }),
     ]);
     li.addEventListener('click', pick);
     li.addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(); });
