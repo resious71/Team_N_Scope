@@ -12,7 +12,7 @@ mb_internal_encoding('UTF-8');
 // 설정 상수
 // ---------------------------------------------------------------------------
 /** 릴리스 버전 (CHANGELOG.md·Git 태그와 맞춤) */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const SCHEMA_VERSION = 1;
 const DEFAULT_MAX_MEMBERS = 30;
 const SYSTEM_MAX_MEMBERS = 100;          // 팀 인원 한도의 시스템 상한
