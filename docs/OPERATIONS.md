@@ -58,6 +58,8 @@ server {
         fastcgi_param GCBA_DATA_DIR /srv/gcba/data;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
+    # 화면 파일은 매번 변경 여부 확인 (업데이트 후 예전 화면이 남지 않도록)
+    location ~* \.(?:html|js|css)$ { expires -1; }
     location ~ \.php$ { return 404; }
     location ~ /\. { deny all; }
 }
@@ -81,6 +83,10 @@ server {
 
     <FilesMatch "^(auth|storage)\.php$">
         Require all denied
+    </FilesMatch>
+    # 화면 파일은 매번 변경 여부 확인 (업데이트 후 예전 화면이 남지 않도록)
+    <FilesMatch "\.(html|js|css)$">
+        Header set Cache-Control "no-cache"
     </FilesMatch>
 </VirtualHost>
 <VirtualHost *:80>
@@ -193,5 +199,6 @@ sudo -u www-data php tools/migrate.php --from /var/backups/gcba/gcba-data-202610
 | 500 "데이터 파일이 손상되었습니다" | PHP 오류 로그의 `[gcba] JSON decode failed` 경로 확인 → 최근 백업에서 해당 파일만 복원 |
 | 모든 요청이 500 "데이터 폴더를 만들 수 없습니다" | `data/` 경로·권한 (`GCBA_DATA_DIR`) |
 | 로그인 후 곧바로 로그아웃됨 | HTTPS가 아닌데 `session.cookie_secure=1`, 또는 프록시 뒤에서 `GCBA_TRUST_PROXY` 미설정 |
+| 업데이트했는데 화면·기능이 예전 그대로 | ① 로그인 화면·헤더의 버전 표시(예: `v1.2.0`)가 예전 번호면 서버가 예전 코드를 실행 중 → 웹 서버 `root`/`DocumentRoot`가 새 폴더인지, `opcache.validate_timestamps=0`이면 `systemctl reload php8.3-fpm` ② 버전은 새 번호인데 화면이 예전이면 브라우저 캐시 → Ctrl+F5(맥은 Cmd+Shift+R) |
 | 관리자 잠김 | `php tools/admin_cli.php unlock <loginId>` |
 | DB 전환 검토 | 동시 사용자 100명 초과, 팀 파일 5MB 초과, 저장 API 1초 초과가 반복될 때 |

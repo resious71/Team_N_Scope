@@ -63,7 +63,7 @@ node --check public/app.js   # Node.js가 있다면
 
 ## 릴리스 (관리자용)
 
-1. `CHANGELOG.md`의 `[Unreleased]` 내용을 새 버전 항목으로 옮기고, `public/api/storage.php`의 `APP_VERSION`을 올립니다.
+1. `CHANGELOG.md`의 `[Unreleased]` 내용을 새 버전 항목으로 옮기고, `public/api/storage.php`의 `APP_VERSION`과 `public/index.html`의 `style.css?v=`·`app.js?v=` 값을 함께 올립니다 (브라우저 캐시 갱신용, 테스트가 일치 여부를 검사).
 2. `main`에 합친 뒤 태그를 만듭니다: `git tag -a vX.Y.Z -m "Team Scope vX.Y.Z" && git push origin vX.Y.Z`
 3. GitHub의 Releases에서 해당 태그로 릴리스를 만들고 변경 이력을 붙입니다.
 
