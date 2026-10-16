@@ -97,6 +97,14 @@ final class Client
     }
 }
 
+// --- 0단계: 정적 파일 -----------------------------------------------------------
+echo "0단계: 정적 파일\n";
+$indexHtml = (string)file_get_contents(dirname(__DIR__) . '/public/index.html');
+preg_match("/const APP_VERSION = '([^']+)'/", (string)file_get_contents(dirname(__DIR__) . '/public/api/storage.php'), $vm);
+$appVersion = $vm[1] ?? '?';
+check('index.html의 CSS·JS 주소에 APP_VERSION이 붙어 있음 (업데이트 후 브라우저 캐시 갱신)',
+    str_contains($indexHtml, 'style.css?v=' . $appVersion . '"') && str_contains($indexHtml, 'app.js?v=' . $appVersion . '"'));
+
 // --- 1단계: 기본 관리자·CLI ---------------------------------------------------
 echo "1단계: 저장소·CLI\n";
 $admin = new Client($base);
