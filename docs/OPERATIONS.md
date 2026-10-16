@@ -150,12 +150,43 @@ sudo -u www-data php tools/admin_cli.php list-admins
 
 `data/trash/{teamId}_{시각}.json` 파일을 내려받아 관리자 탭 > 팀 관리 > 가져오기로 새 팀으로 복원합니다. 계정은 복원되지 않으므로(부서원은 계정 없는 상태) 필요하면 다시 발급합니다.
 
-## 5. 활동 로그
+## 5. 업그레이드 · 마이그레이션
+
+새 버전으로 코드를 바꾼 뒤 `tools/migrate.php`로 기존 계정·팀·관계 데이터를 새 형식으로 변환합니다. 서버가 처음 읽을 때도 대부분 자동 변환되지만, 이 도구는 **변환 전 백업**, **변경 보고서**, **깨진 데이터 정리**까지 한 번에 처리합니다. 여러 번 실행해도 결과가 같습니다(멱등).
+
+```bash
+# 1) 무엇이 바뀌는지 먼저 확인 (아무것도 쓰지 않음)
+sudo -u www-data GCBA_DATA_DIR=/srv/gcba/data php tools/migrate.php --dry-run
+
+# 2) 실제 변환 (변환 전 data 전체를 backups/gcba-data-premigrate-*.tar.gz로 자동 백업)
+sudo -u www-data GCBA_DATA_DIR=/srv/gcba/data php tools/migrate.php
+
+# 예전 서버의 data 폴더나 tools/backup.php 백업 파일을 새 서버로 옮기며 변환
+sudo -u www-data php tools/migrate.php --from /old/gcba/data
+sudo -u www-data php tools/migrate.php --from /var/backups/gcba/gcba-data-20261001-033000.tar.gz
+# 새 서버에 이미 데이터가 있으면 --force (덮어쓰기 전에 현재 데이터를 백업)
+```
+
+| 대상 | 변환 내용 |
+|---|---|
+| 계정 | 빠진 필드(활성, 비밀번호 변경 요구, 동의 시각, 생성일) 채움, 로그인 ID 소문자화, 깨진·중복 항목과 없는 인력에 연결된 계정 보고 |
+| 팀 | 인원 한도·날짜 기본값 |
+| 부서 | 예전 10색 → 파스텔 16색에서 겹치지 않게 재배정 |
+| 인력 | 직급 기본값(부서원), 팀장 2명·부서장 2명이면 먼저 나온 1명만 남기고 부서원으로 |
+| 관계 | 평가자별 평가로 변환: **마지막 수정자가 당사자면 그 사람의 평가, 아니면 관리자 평가**. 없는 인력을 가리키는 관계 제거 |
+
+- 비밀번호 해시는 그대로 옮겨지므로 기존 계정으로 그대로 로그인합니다. 개인정보 안내문이 바뀐 버전이면 첫 로그인 때 다시 동의합니다.
+- 관리자나 예시 데이터로 만든 관계는 관리자 평가가 되어 **부서원 화면에는 보이지 않습니다**(팀장·부서장 화면과 점수에는 반영). 부서원이 본인 평가를 다시 입력하면 됩니다.
+- 실행 기록은 `data/migrations.json`에 남습니다.
+- 문제가 생기면 출력에 표시된 `premigrate` 백업으로 [복구 절차](#복구-절차)를 따릅니다.
+- 브라우저 localStorage에만 저장하던 시제품(Ver02) 데이터는 대상이 아닙니다. 그 데이터는 팀 JSON 형식으로 만들어 관리자 탭 > 가져오기를 사용합니다.
+
+## 6. 활동 로그
 
 - `data/audit/YYYY-MM.log` (JSON Lines). 관리자 탭에서 최근 100건을 볼 수 있습니다.
 - 보관 기간은 `storage.php`의 `AUDIT_RETENTION_MONTHS`(기본 12개월)이며 백업 스크립트가 지난 파일을 삭제합니다. 바꾸면 개인정보 안내문(`PRIVACY_NOTICE`)의 보관 기간 문구와 `PRIVACY_NOTICE_VERSION`도 함께 갱신합니다.
 
-## 6. 장애 시 확인할 것
+## 7. 장애 시 확인할 것
 
 | 증상 | 확인 |
 |---|---|

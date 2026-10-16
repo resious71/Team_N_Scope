@@ -138,14 +138,16 @@ php -S localhost:8000 router.php
 - 쓰기는 `data/.lock`에 `flock`을 건 상태에서 임시 파일에 쓰고 `rename()`으로 교체합니다. API는 변경된 것만 보내는 방식이라 동시에 사용해도 서로의 변경을 덮어쓰지 않습니다.
 - 점수는 저장하지 않고 관계에서 매번 계산합니다.
 - 관리자 CLI: `php tools/admin_cli.php create-admin|reset-password|unlock|list-admins`
+- 이전 버전 데이터 마이그레이션: `php tools/migrate.php --dry-run` 으로 확인 후 `php tools/migrate.php` (예전 서버 데이터는 `--from <data 폴더|백업.tar.gz>`). 자세한 내용은 [운영 문서](docs/OPERATIONS.md#5-업그레이드--마이그레이션)
 
 ## 테스트
 
 ```bash
 php tests/api_test.php
+php tests/migrate_test.php   # 이전 버전 데이터 마이그레이션
 ```
 
-임시 데이터 폴더로 내장 서버를 띄워 **108개 항목**을 검사합니다. 인증·CSRF, 역할·직급별 권한, 데이터 노출 범위, 점수 규칙, 인원 한도, 가져오기 검증, 이력·추이, 일괄 등록, 동시 쓰기, 백업·복구가 포함됩니다.
+임시 데이터 폴더로 내장 서버를 띄워 **126개 항목**(API)과 **26개 항목**(마이그레이션)을 검사합니다. 인증·CSRF, 역할·직급별 권한, 데이터 노출 범위, 점수 규칙, 인원 한도, 가져오기 검증, 이력·추이, 일괄 등록, 동시 쓰기, 백업·복구가 포함됩니다.
 
 ## 프로젝트 구조
 
@@ -158,8 +160,8 @@ public/
   api/index.php        API 진입점 (action 분기·권한 검사)
   api/auth.php         세션·로그인·CSRF·비밀번호·로그인 잠금
   api/storage.php      저장소·잠금·권한 규칙·점수·이력·로그·설정 상수
-tools/                 admin_cli.php, backup.php
-tests/api_test.php     API 통합 테스트
+tools/                 admin_cli.php, backup.php, migrate.php
+tests/                 api_test.php (API 통합), migrate_test.php (마이그레이션)
 docs/                  OPERATIONS.md, screenshots/
 ```
 
