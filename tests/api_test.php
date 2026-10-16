@@ -241,7 +241,7 @@ check('부서원에게는 자기 부서 사람·부서만', count($r['data']['pe
 check('own 범위: 자기 부서 안의 본인 관계만', count($rels) === 1 && $rels[0]['id'] === $rid($p1, $p2));
 check('부서원 응답에 타인 점수 없음', !isset($r['data']['people'][0]['score']));
 check('부서원 응답에 입력자 정보 없음', !isset($rels[0]['createdBy']));
-check('수정자 구분: 본인', $rels[0]['updatedByRole'] === 'self');
+check('부서원에게는 본인 평가가 보임', $rels[0]['status'] === 'private' && $rels[0]['mine'] === 'private');
 check('내 점수는 다른 부서 관계도 반영 (+1 -1 +0 = 0)', $r['data']['me']['score'] === 0);
 
 $jieun = new Client($base);
@@ -251,14 +251,17 @@ $jieun->call('consent', []);
 check('보이지 않는 관계 삭제 403', $jieun->call('relationship_delete', ['ids' => [$rid($p3, $p4)]])['status'] === 403);
 $p1p2 = $rid($p1, $p2);
 $r = $jieun->call('relationship_upsert', ['otherId' => $p1, 'status' => 'social']);
-check('상대방도 같은 관계 수정 가능', $r['data']['created'] === false && $r['data']['id'] === $p1p2);
+check('상대방 평가는 따로 저장 (상대방 기준 새 평가)', $r['data']['created'] === true && $r['data']['id'] === $p1p2 && $r['data']['effective'] === 'social');
 $r = $member->call('team_data');
-check('수정 후 김민수 점수 -2', $r['data']['me']['score'] === -2);
-check('수정자 구분: 상대방', $r['data']['relationships'][0]['updatedByRole'] === 'party');
-
-$admin->call('team_update', ['teamId' => $teamId, 'memberViewScope' => 'team']);
-$r = $member->call('team_data');
-check('team 범위: 자기 부서 안의 관계 전체', count($r['data']['relationships']) === 2);
+check('점수는 쌍의 낮은 값 반영: 김민수 -2', $r['data']['me']['score'] === -2);
+check('상대방 평가는 부서원에게 보이지 않음 (본인 평가 유지)', count($r['data']['relationships']) === 1 && $r['data']['relationships'][0]['status'] === 'private');
+$r = $jieun->call('team_data');
+check('다른 사람만 평가한 관계는 본인이 포함돼도 안 보임', count($r['data']['relationships']) === 1
+    && $r['data']['relationships'][0]['id'] === $p1p2 && $r['data']['relationships'][0]['status'] === 'social');
+$ad = array_values(array_filter($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'], fn($x) => $x['id'] === $p1p2))[0];
+$evP1 = strcmp($p1, $p2) < 0 ? $ad['evalA'] : $ad['evalB'];
+$evP2 = strcmp($p1, $p2) < 0 ? $ad['evalB'] : $ad['evalA'];
+check('관리자는 각자의 평가와 낮은 값을 봄', $ad['status'] === 'social' && $evP1 === 'private' && $evP2 === 'social' && $ad['evalMgr'] === null);
 
 // 점수 (관리자)
 $scores = [];
@@ -271,7 +274,8 @@ check('관리자 점수 계산이 2.6 규칙과 일치',
 
 // 이력·추이
 $h = $admin->call('relationship_history', null, ['teamId' => $teamId, 'relId' => $p1p2])['data']['entries'];
-check('관계 변경 이력 (생성 → 수정)', count($h) === 2 && $h[0]['from'] === 'private' && $h[0]['to'] === 'social');
+check('관계 변경 이력 (평가자별, 유효 상태 변화)', count($h) === 2 && $h[0]['from'] === 'private' && $h[0]['to'] === 'social'
+    && str_contains((string)$h[0]['slotLabel'], '이지은') && $h[0]['slotTo'] === 'social');
 $trend = $admin->call('score_trend', null, ['teamId' => $teamId])['data'];
 $s1 = array_values(array_filter($trend['series'], fn($x) => $x['personId'] === $p1))[0]['scores'];
 check('점수 추이: 12개월, 이번 달 값 = 현재 점수', count($trend['months']) === 12 && end($s1) === -2);
@@ -283,7 +287,8 @@ $jieun->call('relationship_delete', ['ids' => [$p1p2]]);
 $rev2 = $member->call('revision')['data']['revision'];
 check('변경 시 revision 증가', $rev2 > $rev1);
 $h = $admin->call('relationship_history', null, ['teamId' => $teamId, 'relId' => $p1p2])['data']['entries'];
-check('삭제도 이력에 기록', $h[0]['to'] === null && $h[0]['from'] === 'social');
+check('당사자 삭제는 본인 평가만, 이력에 기록', $h[0]['slotFrom'] === 'social' && $h[0]['slotTo'] === null && $h[0]['to'] === 'private');
+check('상대방이 지워도 내 평가는 남음', count($member->call('team_data')['data']['relationships']) === 1);
 
 // 비활성화 → 기존 세션 401
 $admin->call('account_set_active', ['teamId' => $teamId, 'personId' => $p2, 'active' => false]);
@@ -314,7 +319,10 @@ $r = $leader->call('team_data');
 check('팀장은 팀 전체 관계·점수를 받음', count($r['data']['relationships']) === $all && $r['data']['me']['position'] === 'leader'
     && count($r['data']['people']) === 6 && isset($r['data']['people'][0]['score']));
 check('팀장이 다른 두 사람(개발) 관계 추가', $leader->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'public'])['status'] === 200);
-check('수정자 구분: 팀장 (부서원 화면)', array_values(array_filter($member->call('team_data')['data']['relationships'], fn($x) => $x['id'] === $p1p2))[0]['updatedByRole'] === 'leader');
+$mrel = array_values(array_filter($member->call('team_data')['data']['relationships'], fn($x) => $x['id'] === $p1p2))[0];
+check('팀장 입력은 관리자 평가로 저장, 부서원에게는 본인 평가만', $mrel['status'] === 'private');
+$lrel = array_values(array_filter($leader->call('team_data')['data']['relationships'], fn($x) => $x['id'] === $p1p2))[0];
+check('팀장 관계도는 낮은 값 (사적 vs 공적 → 공적)', $lrel['status'] === 'public' && $lrel['evalMgr'] === 'public');
 check('부서장이 자기 부서원끼리 관계 추가', $head->call('relationship_upsert', ['a' => $p5, 'b' => $p3, 'status' => 'private'])['status'] === 200);
 check('부서장이 자기 부서원↔타 부서원 관계 추가 시 403', $head->call('relationship_upsert', ['a' => $p5, 'b' => $p1, 'status' => 'private'])['status'] === 403);
 check('부서장이 타 부서원끼리 관계 추가 시 403', $head->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'social'])['status'] === 403);
@@ -325,6 +333,8 @@ check('부서장은 자기 부서 사람·관계·점수만 받음', count($r['d
     && !array_filter($r['data']['relationships'], fn($x) => !isset($plan[$x['a']], $plan[$x['b']])));
 check('일반 부서원이 남의 관계 추가 시 403', $member->call('relationship_upsert', ['a' => $p2, 'b' => $p6, 'status' => 'social'])['status'] === 403);
 check('팀장이 관계 삭제', $leader->call('relationship_delete', ['ids' => [$p1p2]])['status'] === 200);
+check('당사자가 아닌 삭제는 쌍의 평가 전체 삭제', count(array_filter($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'], fn($x) => $x['id'] === $p1p2)) === 0
+    && count($member->call('team_data')['data']['relationships']) === 0);
 $exp = $admin->call('team_export', null, ['teamId' => $teamId])['data'];
 check('내보내기에 직급 포함', in_array('leader', array_column($exp['people'], 'position'), true));
 
@@ -350,13 +360,23 @@ $r = $admin->call('team_import', ['data' => $export, 'name' => '개발1팀 복�
 check('새 팀으로 가져오기', $r['status'] === 200);
 $imported = $admin->call('team_data', null, ['teamId' => $r['data']['team']['id']])['data'];
 check('가져오기 시 ID 재발급·계정 없음', $imported['people'][0]['id'] !== $export['people'][0]['id'] && $imported['people'][0]['account'] === null);
+$evalCount = fn($rels) => array_sum(array_map(fn($x) => ($x['evalA'] !== null) + ($x['evalB'] !== null) + ($x['evalMgr'] !== null), $rels));
+$origRels = $admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'];
+check('내보내기·가져오기에서 평가자별 평가 보존', $evalCount($imported['relationships']) === $evalCount($origRels)
+    && array_count_values(array_column($imported['relationships'], 'status')) == array_count_values(array_column($origRels, 'status')));
+$legacy = $export;
+foreach ($legacy['relationships'] as &$lr) { unset($lr['evals']); }
+unset($lr);
+$r = $admin->call('team_import', ['data' => $legacy, 'name' => '예전형식팀']);
+$lt = $admin->call('team_data', null, ['teamId' => $r['data']['team']['id']])['data']['relationships'];
+check('예전 형식(평가 1개) 파일은 관리자 평가로 가져옴', $r['status'] === 200 && $lt && !array_filter($lt, fn($x) => $x['evalMgr'] === null || $x['evalA'] !== null || $x['evalB'] !== null));
 $broken = $export;
 $broken['relationships'][] = ['a' => $export['people'][0]['id'], 'b' => 'p-missing', 'status' => 'private'];
 check('참조 무결성 위반 거부', $admin->call('team_import', ['data' => $broken, 'name' => '깨진팀'])['status'] === 400);
 $dup = $export;
 $dup['relationships'][] = ['a' => $export['relationships'][0]['b'], 'b' => $export['relationships'][0]['a'], 'status' => 'social'];
 check('중복 쌍 거부', $admin->call('team_import', ['data' => $dup, 'name' => '중복팀'])['status'] === 400);
-check('실패한 가져오기는 저장되지 않음', count($admin->call('teams')['data']['teams']) === 3);
+check('실패한 가져오기는 저장되지 않음', count($admin->call('teams')['data']['teams']) === 4);
 // 예전 색상표 색(#52C0A1)으로 만든 파일도 새 파스텔 색으로 바꿔 가져온다
 $big = ['schemaVersion' => 1, 'departments' => [['id' => 'd1', 'name' => 'A', 'color' => '#52C0A1']], 'people' => [], 'relationships' => []];
 for ($i = 0; $i < 35; $i++) {

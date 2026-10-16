@@ -575,6 +575,10 @@ function act_team_data(array $input, array $ctx): array
         $out['relationships'] = array_map(fn($r) => $r + [
             'createdByLabel' => $userLabels[$r['createdBy']] ?? '(삭제된 계정)',
             'updatedByLabel' => $userLabels[$r['updatedBy']] ?? '(삭제된 계정)',
+            // 관리자는 쌍마다 각자의 평가를 본다 (A의 평가 / B의 평가 / 관리자 평가)
+            'evalA' => $r['evals'][$r['a']]['status'] ?? null,
+            'evalB' => $r['evals'][$r['b']]['status'] ?? null,
+            'evalMgr' => $r['evals'][MGR_SLOT]['status'] ?? null,
         ], $team['relationships']);
         return $out;
     }
@@ -590,32 +594,23 @@ function act_team_data(array $input, array $ctx): array
     $out['people'] = array_values(array_map(fn($p) => [
         'id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId'], 'position' => position_of($p),
     ] + ($showScores ? ['score' => $scores[$p['id']]] : []), array_filter($team['people'], fn($p) => isset($visible[$p['id']]))));
-    $rels = member_visible_relationships($team, $mePerson, $meta['memberViewScope']);
-    // 마지막 수정자는 이름 대신 보는 사람 기준 역할로만 표시 (본인/상대방(당사자)/팀장/부서장/관리자)
-    $roleOf = [];
-    $users = load_users()['users'];
-    foreach ($users as $u) {
-        if ($u['role'] === 'admin') {
-            $roleOf[$u['id']] = ['admin', null];
-        } elseif (($u['teamId'] ?? null) === $teamId) {
-            $roleOf[$u['id']] = [position_of(person_of($team, (string)$u['personId'])), $u['personId']];
-        }
+    $rels = member_visible_relationships($team, $mePerson);
+    if ($pos === 'member') {
+        // 부서원: 본인이 등록한 평가만 (상태도 본인 평가)
+        $out['relationships'] = array_values(array_map(fn($r) => [
+            'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'],
+            'status' => $r['evals'][$me]['status'], 'mine' => $r['evals'][$me]['status'],
+            'updatedAt' => $r['evals'][$me]['at'] ?? $r['updatedAt'],
+        ], $rels));
+    } else {
+        // 팀장·부서장: 쌍의 유효 상태(가장 낮은 값) + 본인 평가·관리자 평가(수정 폼용)
+        $out['relationships'] = array_values(array_map(fn($r) => [
+            'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'], 'status' => $r['status'],
+            'mine' => $r['evals'][$me]['status'] ?? null,
+            'evalMgr' => $r['evals'][MGR_SLOT]['status'] ?? null,
+            'updatedAt' => $r['updatedAt'],
+        ], $rels));
     }
-    $myUid = $ctx['user']['id'];
-    $updatedRole = function (array $r) use ($roleOf, $myUid): string {
-        if ($r['updatedBy'] === $myUid) {
-            return 'self';
-        }
-        [$role, $pid] = $roleOf[$r['updatedBy']] ?? ['unknown', null];
-        if ($pid !== null && ($pid === $r['a'] || $pid === $r['b'])) {
-            return 'party';
-        }
-        return $role;
-    };
-    $out['relationships'] = array_values(array_map(fn($r) => [
-        'id' => $r['id'], 'a' => $r['a'], 'b' => $r['b'], 'status' => $r['status'], 'updatedAt' => $r['updatedAt'],
-        'updatedByRole' => $updatedRole($r),
-    ], $rels));
     $out['me'] = [
         'personId' => $me,
         'departmentId' => $mePerson['departmentId'],
@@ -979,31 +974,32 @@ function act_relationship_upsert(array $input, array $ctx): array
         history_ensure_baseline($team);
         $id = relationship_id($a, $b);
         $now = now_iso();
+        // 본인이 당사자면 본인 평가, 아니면(팀장·부서장·관리자) 관리자 평가를 바꾼다
+        $slot = eval_slot($mePid, $a, $b);
         $i = find_index($team['relationships'], $id);
-        if ($i >= 0) {
-            $old = $team['relationships'][$i]['status'];
-            $team['relationships'][$i]['status'] = $status;
-            $team['relationships'][$i]['updatedBy'] = $uid;
-            $team['relationships'][$i]['updatedAt'] = $now;
-            if ($old !== $status) {
-                history_append($team['teamId'], $team['relationships'][$i], $old, $status, $uid);
-            }
-            return ['id' => $id, 'created' => false, 'old' => $old];
+        if ($i < 0) {
+            [$x, $y] = strcmp($a, $b) < 0 ? [$a, $b] : [$b, $a];
+            $team['relationships'][] = [
+                'id' => $id, 'a' => $x, 'b' => $y, 'status' => null, 'evals' => [],
+                'createdBy' => $uid, 'createdAt' => $now, 'updatedBy' => $uid, 'updatedAt' => $now,
+            ];
+            $i = count($team['relationships']) - 1;
         }
-        [$x, $y] = strcmp($a, $b) < 0 ? [$a, $b] : [$b, $a];
-        $rel = [
-            'id' => $id, 'a' => $x, 'b' => $y, 'status' => $status,
-            'createdBy' => $uid, 'createdAt' => $now, 'updatedBy' => $uid, 'updatedAt' => $now,
-        ];
-        $team['relationships'][] = $rel;
-        history_append($team['teamId'], $rel, null, $status, $uid);
-        return ['id' => $id, 'created' => true, 'old' => null];
+        $rel = &$team['relationships'][$i];
+        $oldEff = $rel['status'];
+        $oldSlot = $rel['evals'][$slot]['status'] ?? null;
+        set_relationship_eval($rel, $slot, $status, $uid);
+        if ($oldSlot !== $status) {
+            history_append($team['teamId'], $rel, $oldEff, $rel['status'], $uid, $slot, $oldSlot, $status);
+        }
+        return ['id' => $id, 'created' => $oldSlot === null, 'old' => $oldSlot, 'slot' => $slot, 'effective' => $rel['status']];
     });
     $team = require_team($teamId);
     $label = person_name($team, $a) . ' ↔ ' . person_name($team, $b);
+    $slotLabel = $res['slot'] === MGR_SLOT ? '관리자 평가' : person_name($team, $res['slot']) . '의 평가';
     audit($uid, $res['created'] ? 'relationship_create' : 'relationship_update', $teamId, $res['id'],
-        $label . ': ' . ($res['old'] ? "{$res['old']} → " : '') . $status);
-    return ['id' => $res['id'], 'created' => $res['created']];
+        $label . " [{$slotLabel}]: " . ($res['old'] ? "{$res['old']} → " : '') . $status . " (유효 {$res['effective']})");
+    return ['id' => $res['id'], 'created' => $res['created'], 'effective' => $res['effective']];
 }
 
 function act_relationship_delete(array $input, array $ctx): array
@@ -1015,22 +1011,35 @@ function act_relationship_delete(array $input, array $ctx): array
     $labels = mutate_team($teamId, function (array &$team) use ($ids, $me, $uid) {
         history_ensure_baseline($team);
         $labels = [];
-        $gone = [];
-        foreach ($team['relationships'] as $r) {
+        foreach ($team['relationships'] as $k => &$r) {
             if (!in_array($r['id'], $ids, true)) {
                 continue;
             }
             if ($me !== null && !member_can_manage($team, person_of($team, $me), $r['a'], $r['b'])) {
                 throw new ApiError(403, '이 관계를 삭제할 권한이 없습니다.');
             }
-            $labels[] = person_name($team, $r['a']) . ' ↔ ' . person_name($team, $r['b']) . " ({$r['status']})";
-            $gone[] = $r;
+            $label = person_name($team, $r['a']) . ' ↔ ' . person_name($team, $r['b']);
+            $oldEff = $r['status'];
+            if ($me !== null && ($me === $r['a'] || $me === $r['b'])) {
+                // 당사자: 본인 평가만 삭제
+                if (!isset($r['evals'][$me])) {
+                    continue;
+                }
+                $old = $r['evals'][$me]['status'];
+                set_relationship_eval($r, $me, null, $uid);
+                history_append($team['teamId'], $r, $oldEff, $r['status'], $uid, $me, $old, null);
+                $labels[] = "{$label} [본인 평가 {$old}]";
+            } else {
+                // 팀장·부서장·관리자(당사자 아님): 쌍의 평가 전체 삭제
+                $r['evals'] = [];
+                $r['status'] = null;
+                history_append($team['teamId'], $r, $oldEff, null, $uid, 'all', null, null);
+                $labels[] = "{$label} [전체 평가, 유효 {$oldEff}]";
+            }
         }
-        foreach ($gone as $r) {
-            history_append($team['teamId'], $r, $r['status'], null, $uid);
-        }
-        // 이미 삭제된 관계는 무시 (양 당사자가 동시에 삭제하는 경우)
-        $team['relationships'] = array_values(array_filter($team['relationships'], fn($r) => !in_array($r['id'], $ids, true)));
+        unset($r);
+        // 평가가 하나도 남지 않은 관계는 지운다 (이미 삭제된 관계는 무시)
+        $team['relationships'] = array_values(array_filter($team['relationships'], fn($x) => !empty($x['evals'])));
         return $labels;
     });
     if ($labels) {
@@ -1075,7 +1084,11 @@ function act_team_export(array $input, array $ctx): array
         ],
         'departments' => array_map(fn($d) => ['id' => $d['id'], 'name' => $d['name'], 'color' => $d['color']], $team['departments']),
         'people' => array_map(fn($p) => ['id' => $p['id'], 'name' => $p['name'], 'departmentId' => $p['departmentId'], 'position' => position_of($p)], $team['people']),
-        'relationships' => array_map(fn($r) => ['a' => $r['a'], 'b' => $r['b'], 'status' => $r['status']], $team['relationships']),
+        // status = 유효 상태(가장 낮은 값), evals = 평가자별 평가 (부서원 ID 또는 "mgr" → 상태)
+        'relationships' => array_map(fn($r) => [
+            'a' => $r['a'], 'b' => $r['b'], 'status' => $r['status'],
+            'evals' => (object)array_map(fn($e) => $e['status'], $r['evals'] ?? []),
+        ], $team['relationships']),
     ];
 }
 
@@ -1196,16 +1209,33 @@ function act_team_import(array $input, array $ctx): array
         if ($a === $b) {
             throw new ApiError(400, "관계 #" . ($i + 1) . "의 두 당사자가 같습니다.");
         }
-        $status = valid_status($r['status'] ?? null);
         $na = $personMap[$a];
         $nb = $personMap[$b];
         $id = relationship_id($na, $nb);
         if (isset($rels[$id])) {
             throw new ApiError(400, "관계 #" . ($i + 1) . "가 중복된 쌍입니다.");
         }
+        // 평가자별 평가: {부서원 ID|"mgr": 상태} 또는 팀 파일 형식 {…: {status, …}}.
+        // 없으면(1.1.0 이하 내보내기) status를 관리자 평가로 가져온다.
+        $evals = [];
+        if (isset($r['evals']) && is_array($r['evals']) && $r['evals']) {
+            foreach ($r['evals'] as $who => $e) {
+                $st = valid_status(is_array($e) ? ($e['status'] ?? null) : $e);
+                if ($who === MGR_SLOT) {
+                    $slot = MGR_SLOT;
+                } elseif ($who === $a || $who === $b) {
+                    $slot = $personMap[$who];
+                } else {
+                    throw new ApiError(400, "관계 #" . ($i + 1) . "의 평가자는 두 당사자 또는 mgr이어야 합니다.");
+                }
+                $evals[$slot] = ['status' => $st, 'by' => $uid, 'at' => $now];
+            }
+        } else {
+            $evals[MGR_SLOT] = ['status' => valid_status($r['status'] ?? null), 'by' => $uid, 'at' => $now];
+        }
         [$x, $y] = strcmp($na, $nb) < 0 ? [$na, $nb] : [$nb, $na];
         $rels[$id] = [
-            'id' => $id, 'a' => $x, 'b' => $y, 'status' => $status,
+            'id' => $id, 'a' => $x, 'b' => $y, 'status' => effective_status($evals), 'evals' => $evals,
             'createdBy' => $uid, 'createdAt' => $now, 'updatedBy' => $uid, 'updatedAt' => $now,
         ];
     }
@@ -1426,8 +1456,15 @@ function act_relationship_history(array $input, array $ctx): array
         $entries = [['at' => $r['updatedAt'], 'from' => null, 'to' => $r['status'], 'by' => $r['updatedBy'], 'baseline' => true]];
     }
     $entries = array_reverse($entries);
+    $slotLabel = fn($slot) => match (true) {
+        $slot === null => null,
+        $slot === MGR_SLOT => '관리자 평가',
+        $slot === 'all' => '전체 평가 삭제',
+        default => person_name($team, $slot) . '의 평가',
+    };
     return ['entries' => array_map(fn($e) => [
         'at' => $e['at'], 'from' => $e['from'] ?? null, 'to' => $e['to'] ?? null,
+        'slotLabel' => $slotLabel($e['slot'] ?? null), 'slotFrom' => $e['slotFrom'] ?? null, 'slotTo' => $e['slotTo'] ?? null,
         'byLabel' => $e['by'] ? ($labels[$e['by']] ?? '(삭제된 계정)') : '-',
         'baseline' => !empty($e['baseline']),
     ], $entries)];

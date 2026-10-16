@@ -40,6 +40,11 @@ const PALETTE = [
 /** 1.0.0까지 쓰던 10색 — 이 색을 쓰는 부서는 새 색상표에서 겹치지 않는 색을 다시 배정받는다 */
 const LEGACY_COLORS = ['#52C0A1', '#FF9A56', '#FF6B9D', '#C44569', '#6C63FF', '#5DADE2', '#F39C12', '#E74C3C', '#AF7AC5', '#48C9B0'];
 const STATUS_SCORES = ['private' => 1, 'public' => 0, 'social' => -1];
+/**
+ * 관계 평가 슬롯: 한 쌍(A↔B)에 A의 평가, B의 평가, 관리자 평가(팀장·부서장·관리자가
+ * 당사자가 아닐 때 입력)를 따로 저장한다. 쌍의 유효 상태 = 평가 중 가장 낮은 값.
+ */
+const MGR_SLOT = 'mgr';
 /** 부서원 직급: 팀장 / 부서장 / 부서원 */
 const POSITIONS = ['leader' => '팀장', 'head' => '부서장', 'member' => '부서원'];
 /** 일괄 등록에서 받는 직급 표기 */
@@ -63,13 +68,12 @@ const LOGIN_ID_PATTERN = '/^[a-z0-9_.-]{4,20}$/';
  * 개인정보 안내문. 문구를 개정하면 PRIVACY_NOTICE_VERSION을 개정 시각으로 올린다.
  * consentedAt이 이 값보다 이전이면 재동의를 요구한다.
  */
-const PRIVACY_NOTICE_VERSION = '2026-10-15T00:00:00+09:00';
+const PRIVACY_NOTICE_VERSION = '2026-10-16T00:00:00+09:00';
 const PRIVACY_NOTICE = [
     '이 서비스는 팀 내 관계를 시각화하기 위해 입력된 관계 평가(사적·공적·사회적)를 수집합니다.',
-    '관계는 두 사람 모두의 점수에 반영되며, 점수와 순위 산출에 사용됩니다.',
-    '관계는 당사자 본인뿐 아니라 팀장(팀 전체)과 부서장(자기 부서원 사이)도 입력·수정·삭제할 수 있습니다. 내 관계 목록에는 마지막으로 수정한 사람이 본인·상대방·팀장·부서장·관리자 중 누구인지 표시됩니다.',
-    '관리자는 모든 관계와 입력자, 관계별 변경 이력(누가, 언제, 어떻게 바꿨는지)과 점수 추이를 열람할 수 있습니다.',
-    '팀장은 팀 전체, 부서장은 자기 부서원의 관계와 점수·순위를 볼 수 있습니다. 일반 부서원은 자기 부서원의 이름과 본인 점수만 볼 수 있습니다.',
+    '관계 평가는 입력한 사람별로 따로 저장됩니다. 부서원은 본인이 등록한 평가만 볼 수 있으며, 다른 사람이 입력한 평가는 본인이 포함되어도 보이지 않습니다.',
+    '두 사람 사이의 평가가 서로 다르면 그중 낮은 값이 관계도와 두 사람의 점수에 반영됩니다. 팀장·부서장·관리자는 당사자가 아닌 관계에 별도의 관리자 평가를 입력할 수 있으며, 이 평가도 낮은 값 계산에 포함됩니다.',
+    '팀장은 팀 전체, 부서장은 자기 부서의 관계를 낮은 값으로 보고, 점수·순위를 볼 수 있습니다. 관리자는 쌍마다 각자의 평가와 입력자, 변경 이력, 점수 추이를 열람할 수 있습니다.',
     '부서원 또는 팀이 삭제되면 관련 관계·변경 이력과 계정은 즉시 삭제됩니다. 백업은 14일, 활동 로그는 12개월간 보관 후 삭제됩니다.',
     '평가 정보의 사용 목적 제한 등 세부 사항은 조직의 개인정보·인사 관련 정책을 따릅니다.',
 ];
@@ -264,6 +268,7 @@ function load_team(string $teamId): ?array
     }
     $team += ['departments' => [], 'people' => [], 'relationships' => [], 'revision' => 0];
     $team['departments'] = migrate_department_colors($team['departments']);
+    $team['relationships'] = migrate_relationship_evals($team['relationships'], $teamId);
     return $team;
 }
 
@@ -502,6 +507,75 @@ function position_of(?array $person): string
     return $person['position'] ?? 'member';
 }
 
+// ---------------------------------------------------------------------------
+// 관계 평가 (평가자별 저장, 유효 상태 = 가장 낮은 값)
+// ---------------------------------------------------------------------------
+/** 평가들 중 점수가 가장 낮은 상태 (없으면 null) */
+function effective_status(array $evals): ?string
+{
+    $best = null;
+    foreach ($evals as $e) {
+        $st = $e['status'] ?? null;
+        if (isset(STATUS_SCORES[$st]) && ($best === null || STATUS_SCORES[$st] < STATUS_SCORES[$best])) {
+            $best = $st;
+        }
+    }
+    return $best;
+}
+
+/** 관계의 슬롯 평가를 바꾸거나($status=null이면 삭제) 유효 상태를 다시 계산한다. */
+function set_relationship_eval(array &$rel, string $slot, ?string $status, string $userId): void
+{
+    $rel['evals'] = (array)($rel['evals'] ?? []);
+    if ($status === null) {
+        unset($rel['evals'][$slot]);
+    } else {
+        $rel['evals'][$slot] = ['status' => $status, 'by' => $userId, 'at' => now_iso()];
+    }
+    $rel['status'] = effective_status($rel['evals']);
+    $rel['updatedBy'] = $userId;
+    $rel['updatedAt'] = now_iso();
+}
+
+/** 평가를 남길 슬롯: 본인이 당사자면 본인, 아니면 관리자 평가 */
+function eval_slot(?string $actorPersonId, string $a, string $b): string
+{
+    return ($actorPersonId !== null && ($actorPersonId === $a || $actorPersonId === $b)) ? $actorPersonId : MGR_SLOT;
+}
+
+/**
+ * 1.1.0 이하의 관계(평가 1개)를 평가 슬롯 구조로 변환한다.
+ * 마지막 수정자가 당사자면 그 사람의 평가, 아니면 관리자 평가로 본다. (다음 저장 때 파일에도 반영)
+ */
+function migrate_relationship_evals(array $relationships, string $teamId): array
+{
+    $needs = false;
+    foreach ($relationships as $r) {
+        if (!isset($r['evals']) || !is_array($r['evals']) || !$r['evals']) {
+            $needs = true;
+            break;
+        }
+    }
+    if (!$needs) {
+        return $relationships;
+    }
+    $personOf = [];
+    foreach (load_users()['users'] as $u) {
+        if (($u['teamId'] ?? null) === $teamId) {
+            $personOf[$u['id']] = $u['personId'];
+        }
+    }
+    foreach ($relationships as &$r) {
+        if (!isset($r['evals']) || !is_array($r['evals']) || !$r['evals']) {
+            $slot = eval_slot($personOf[$r['updatedBy'] ?? ''] ?? null, $r['a'], $r['b']);
+            $r['evals'] = [$slot => ['status' => $r['status'], 'by' => $r['updatedBy'] ?? null, 'at' => $r['updatedAt'] ?? now_iso()]];
+        }
+        $r['status'] = effective_status($r['evals']) ?? $r['status'];
+    }
+    unset($r);
+    return $relationships;
+}
+
 /** 팀장은 팀 전체, 부서장·부서원은 자기 부서만 본다. */
 function member_sees_whole_team(array $me): bool
 {
@@ -539,17 +613,18 @@ function member_can_manage(array $team, array $me, string $a, string $b): bool
 
 /**
  * 부서원 계정에게 보내는 관계 (두 당사자가 모두 보이는 범위에 있어야 함).
- * 팀장: 팀 전체 / 부서장: 자기 부서 안 / 부서원: 공개 범위 own이면 본인 관계, team이면 자기 부서 안의 관계.
+ * 팀장: 팀 전체 / 부서장: 자기 부서 안 — 쌍의 유효 상태(가장 낮은 값)
+ * 부서원: 본인이 등록한 평가가 있는 관계만 (다른 사람이 입력한 평가는 본인이 포함돼도 보이지 않음)
  */
-function member_visible_relationships(array $team, array $me, string $viewScope): array
+function member_visible_relationships(array $team, array $me): array
 {
     $visible = member_visible_people($team, $me);
-    $ownOnly = position_of($me) === 'member' && $viewScope !== 'team';
+    $ownOnly = position_of($me) === 'member';
     return array_values(array_filter($team['relationships'], function ($r) use ($me, $visible, $ownOnly) {
         if (!isset($visible[$r['a']], $visible[$r['b']])) {
             return false;
         }
-        return !$ownOnly || $r['a'] === $me['id'] || $r['b'] === $me['id'];
+        return !$ownOnly || isset($r['evals'][$me['id']]);
     }));
 }
 
@@ -601,12 +676,17 @@ function history_ensure_baseline(array $team): void
     umask($old);
 }
 
-/** 이력 한 건 추가: $to가 null이면 삭제. */
-function history_append(string $teamId, array $rel, ?string $from, ?string $to, string $userId): void
+/**
+ * 이력 한 건 추가. from/to는 쌍의 유효 상태(가장 낮은 값, null이면 관계 없음),
+ * slot/slotFrom/slotTo는 실제로 바뀐 평가(누구의 평가가 어떻게 바뀌었는지).
+ */
+function history_append(string $teamId, array $rel, ?string $from, ?string $to, string $userId,
+    ?string $slot = null, ?string $slotFrom = null, ?string $slotTo = null): void
 {
     $line = json_encode([
         'at' => now_iso(), 'rel' => $rel['id'], 'a' => $rel['a'], 'b' => $rel['b'],
         'from' => $from, 'to' => $to, 'by' => $userId,
+        'slot' => $slot, 'slotFrom' => $slotFrom, 'slotTo' => $slotTo,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $old = umask(0077);
     file_put_contents(history_path($teamId), $line . "\n", FILE_APPEND | LOCK_EX);
@@ -796,11 +876,22 @@ function seed_team(array &$team, int $maxMembers, string $userId): int
             if (isset($existingRel[$id])) {
                 continue;
             }
-            $roll = random_int(1, 100);
-            $status = $roll <= 45 ? 'private' : ($roll <= 80 ? 'public' : 'social');
+            // 샘플: 두 사람이 각자 평가 (한쪽만 평가한 쌍도 섞음)
+            $pick = function () {
+                $roll = random_int(1, 100);
+                return $roll <= 50 ? 'private' : ($roll <= 82 ? 'public' : 'social');
+            };
             [$x, $y] = strcmp($a, $b) < 0 ? [$a, $b] : [$b, $a];
+            $who = random_int(1, 100);
+            $evals = [];
+            if ($who <= 75) {
+                $evals[$x] = ['status' => $pick(), 'by' => $userId, 'at' => $now];
+            }
+            if ($who > 40) {
+                $evals[$y] = ['status' => $pick(), 'by' => $userId, 'at' => $now];
+            }
             $team['relationships'][] = [
-                'id' => $id, 'a' => $x, 'b' => $y, 'status' => $status,
+                'id' => $id, 'a' => $x, 'b' => $y, 'status' => effective_status($evals), 'evals' => $evals,
                 'createdBy' => $userId, 'createdAt' => $now, 'updatedBy' => $userId, 'updatedAt' => $now,
             ];
             $existingRel[$id] = true;

@@ -18,8 +18,6 @@ const STATUS = {
 const STATUS_KEYS = Object.keys(STATUS);
 const POSITIONS = { leader: '팀장', head: '부서장', member: '부서원' };
 const VIEW_SCOPES = { team: '팀', dept: '부서', person: '부서원' };
-/** 수정자 구분 (부서원 화면): 이름 대신 역할만 표시 */
-const UPDATED_BY_LABELS = { self: '본인', leader: '팀장', head: '부서장', admin: '관리자', member: '부서원', unknown: '알 수 없음' };
 /** 점수 추이 계열 색 (고정 순서, 검증된 범주형 팔레트 앞 5칸) */
 const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'];
 
@@ -815,6 +813,8 @@ function hideTooltip() {
 
 // ---- 범례 ----------------------------------------------------------------
 function renderLegend() {
+  // 부서원은 본인 평가만 보므로 "낮은 값으로 표시" 안내가 해당하지 않음
+  $('legend-eval-hint').hidden = myPosition() === 'member';
   const box = clear($('legend-status'));
   for (const key of STATUS_KEYS) {
     const cb = h('input', { type: 'checkbox', class: key, checked: S.statusFilter[key] });
@@ -938,7 +938,6 @@ function renderMyPanel() {
       h('span', { class: 'dot', style: { background: deptColor(other ? other.departmentId : '') } }),
       h('span', { class: 'grow', text: label }),
       r.updatedByLabel ? h('span', { class: 'by', text: `수정: ${r.updatedByLabel}` }) : null,
-      r.updatedByRole ? h('span', { class: 'by', text: `수정: ${r.updatedByRole === 'party' ? (r.a === me || r.b === me ? '상대방' : '당사자') : (UPDATED_BY_LABELS[r.updatedByRole] || '-')}` }) : null,
       h('span', { class: `status-chip ${r.status}`, text: STATUS[r.status].label }),
     ]);
     li.addEventListener('click', pick);
@@ -959,14 +958,27 @@ function renderPartyB() {
   sel.value = others.some((p) => p.id === prev) ? prev : '';
 }
 
-/** 이미 관계가 있는 쌍을 고르면 현재 상태를 표시하고 버튼을 "수정"으로 */
+/**
+ * 저장하면 바뀌는 평가: 본인이 당사자면 본인 평가, 아니면(팀장·부서장·관리자) 관리자 평가.
+ * 그 평가가 이미 있으면 현재 값을 표시하고 버튼을 "수정"으로.
+ */
+function editableEval(rel, a, b) {
+  if (!rel) return null;
+  const me = myPersonId();
+  return me && (me === a || me === b) ? rel.mine ?? null : rel.evalMgr ?? null;
+}
+
 function syncMyForm(fromUser) {
   const a = $('my-rel-a').value;
   const b = $('my-rel-other').value;
   const rel = a && b && S.data.relationships.find((r) => r.id === relId(a, b));
-  if (rel) setRadio($('my-rel-status'), rel.status);
+  const current = editableEval(rel, a, b);
+  if (current) setRadio($('my-rel-status'), current);
   else if (fromUser) setRadio($('my-rel-status'), null);
-  $('my-rel-save').textContent = rel ? '수정' : '저장';
+  $('my-rel-save').textContent = current ? '수정' : '저장';
+  const me = myPersonId();
+  const asManager = !(me && (me === a || me === b));
+  $('my-rel-save').title = asManager ? '관리자 평가로 저장됩니다 (두 사람의 평가와 함께 낮은 값 계산에 포함)' : '내 평가로 저장됩니다';
 }
 
 function relId(a, b) {
@@ -1018,12 +1030,11 @@ function renderAdmin() {
 
 function renderTeamAdmin() {
   const body = clear($('team-table'));
-  if (!S.teams.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '4', text: '팀이 없습니다.' })]));
+  if (!S.teams.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '3', text: '팀이 없습니다.' })]));
   for (const t of S.teams) {
     const tr = h('tr', { class: t.id === S.teamId ? 'selected' : '' }, [
       h('td', { text: t.name }),
       h('td', { text: `${t.memberCount ?? '-'} / ${t.maxMembers}` }),
-      h('td', { text: t.memberViewScope === 'team' ? '우리 부서 관계' : '본인 관계만' }),
       h('td', { text: fmtDate(t.updatedAt) }),
     ]);
     body.append(tr);
@@ -1034,7 +1045,6 @@ function renderTeamAdmin() {
   const editing = active && active.closest && active.closest('#team-edit-form');
   if (!editing) {
     $('team-edit-name').value = t.name;
-    $('team-edit-scope').value = t.memberViewScope;
     $('team-edit-max').value = t.maxMembers;
   }
   const lim = S.limits || { systemMaxMembers: 100 };
@@ -1285,7 +1295,10 @@ function renderRelAdmin() {
     const tr = h('tr', { class: S.relSelected.has(r.id) ? 'selected' : '' }, [
       h('td', {}, [cb]),
       h('td', { text: `${an} ↔ ${bn}` }),
-      h('td', {}, [h('span', { class: `status-chip ${r.status}`, text: STATUS[r.status].text })]),
+      h('td', {}, [
+        h('span', { class: `status-chip ${r.status}`, text: STATUS[r.status].text }),
+        h('div', { class: 'eval-breakdown' }, evalBreakdown(r)),
+      ]),
       h('td', { text: r.createdByLabel || '-' }),
       h('td', { text: r.updatedByLabel || '-' }),
       h('td', { text: fmtDate(r.updatedAt) }),
@@ -1298,6 +1311,14 @@ function renderRelAdmin() {
     body.append(tr);
   }
   updateRelAdminButtons();
+}
+
+/** 관리자 탭: 쌍의 평가자별 평가 (A / B / 관리자) */
+function evalBreakdown(r) {
+  const item = (label, st) => h('span', { class: 'eval-item' }, [
+    `${label} `, st ? h('b', { class: `eval-${st}`, text: STATUS[st].label }) : h('span', { class: 'muted', text: '-' }),
+  ]);
+  return [item(personName(r.a), r.evalA), item(personName(r.b), r.evalB), item('관리자', r.evalMgr)];
 }
 
 /** 관계 관리 탭 필터: 이름 + 상태 */
@@ -1362,9 +1383,19 @@ async function openHistory(rel) {
   if (!entries.length) body.append(h('tr', {}, [h('td', { class: 'empty', colspan: '3', text: '이력이 없습니다.' })]));
   const chip = (st) => (st ? h('span', { class: `status-chip ${st}`, text: STATUS[st].label }) : h('span', { class: 'muted', text: '없음' }));
   for (const e of entries) {
-    const change = e.baseline
-      ? h('span', {}, [chip(e.to), h('span', { class: 'muted', text: ' (이력 기록 시작 시점 상태)' })])
-      : h('span', { class: 'change' }, [chip(e.from), ' → ', e.to ? chip(e.to) : h('span', { class: 'muted', text: '삭제' })]);
+    let change;
+    if (e.baseline) {
+      change = h('span', {}, [chip(e.to), h('span', { class: 'muted', text: ' (이력 기록 시작 시점 상태)' })]);
+    } else {
+      const eff = h('span', { class: 'change' }, [chip(e.from), ' → ', e.to ? chip(e.to) : h('span', { class: 'muted', text: '삭제' })]);
+      change = e.slotLabel
+        ? h('div', {}, [
+          h('div', { class: 'change' }, [h('span', { class: 'slot-label', text: e.slotLabel }),
+            ...(e.slotLabel !== '전체 평가 삭제' ? [chip(e.slotFrom), ' → ', e.slotTo ? chip(e.slotTo) : h('span', { class: 'muted', text: '삭제' })] : [])]),
+          h('div', { class: 'change sub' }, [h('span', { class: 'muted', text: '관계(낮은 값) ' }), eff]),
+        ])
+        : eff;
+    }
     body.append(h('tr', {}, [h('td', { class: 'nowrap', text: fmtDate(e.at) }), h('td', {}, [change]), h('td', { text: e.byLabel })]));
   }
 }
@@ -1846,7 +1877,13 @@ function bind() {
   $('my-rel-filter').addEventListener('input', (e) => { S.myRelFilter = e.target.value; renderMyPanel(); applyHighlight(); });
   $('my-rel-delete').addEventListener('click', safe(async () => {
     const n = S.mySelected.size;
-    if (!n || !confirm(`선택한 관계 ${n}개를 삭제할까요? 두 사람의 점수에 모두 반영됩니다.`)) return;
+    const me = myPersonId();
+    const sel = S.data.relationships.filter((r) => S.mySelected.has(r.id));
+    const own = sel.filter((r) => r.a === me || r.b === me).length;
+    const msg = own === sel.length
+      ? `선택한 관계 ${n}개에서 내 평가를 삭제할까요? 상대방의 평가는 남습니다.`
+      : `선택한 관계 ${n}개를 삭제할까요?\n내가 포함된 관계는 내 평가만, 다른 사람들의 관계는 그 쌍의 평가 전체가 삭제됩니다.`;
+    if (!n || !confirm(msg)) return;
     await mutate('relationship_delete', teamBody({ ids: [...S.mySelected] }), { success: `관계 ${n}개를 삭제했습니다.` });
     S.mySelected.clear();
     renderMyPanel();
@@ -1874,7 +1911,6 @@ function bind() {
     document.activeElement.blur();
     await mutate('team_update', teamBody({
       name: $('team-edit-name').value,
-      memberViewScope: $('team-edit-scope').value,
       maxMembers: max,
     }), { success: '팀 설정을 저장했습니다.' });
   }));
@@ -2052,7 +2088,7 @@ function bind() {
     const a = $('admin-rel-a').value;
     const b = $('admin-rel-b').value;
     const rel = a && b && S.data.relationships.find((r) => r.id === relId(a, b));
-    if (rel) setRadio($('admin-rel-status'), rel.status);
+    setRadio($('admin-rel-status'), rel ? rel.evalMgr : null);
   };
   $('admin-rel-a').addEventListener('change', syncAdminRelStatus);
   $('admin-rel-b').addEventListener('change', syncAdminRelStatus);
@@ -2081,7 +2117,7 @@ function bind() {
   }));
   $('admin-rel-delete').addEventListener('click', safe(async () => {
     const n = S.relSelected.size;
-    if (!n || !confirm(`선택한 관계 ${n}개를 삭제할까요?`)) return;
+    if (!n || !confirm(`선택한 관계 ${n}개를 삭제할까요? 각 쌍의 평가(두 사람의 평가와 관리자 평가)가 모두 삭제됩니다.`)) return;
     await mutate('relationship_delete', teamBody({ ids: [...S.relSelected] }), { success: `관계 ${n}개를 삭제했습니다.` });
     S.relSelected.clear();
     renderRelAdmin();
