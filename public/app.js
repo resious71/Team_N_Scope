@@ -447,6 +447,17 @@ function orderedPeople() {
     (order.get(a.departmentId) ?? 999) - (order.get(b.departmentId) ?? 999) || collator.compare(a.name, b.name));
 }
 
+/** 관계도에 쓰는 이름: 부서원 화면에서는 다른 사람 이름의 마지막 한 글자만 */
+function chartName(p) {
+  if (!p) return '';
+  if (myPosition() !== 'member' || p.id === myPersonId()) return p.name;
+  return [...p.name.trim()].at(-1) || '';
+}
+
+function chartNameById(id) {
+  return chartName(personById(id));
+}
+
 function personLabel(p) {
   const d = deptById(p.departmentId);
   return `${p.name} (${d ? d.name : '부서 없음'})`;
@@ -716,7 +727,7 @@ function renderChart() {
     .on('mouseenter', function (event, r) {
       d3.select(this.parentNode).classed('hover', true);
       svg.selectAll('.node').filter((n) => n.id === r.a || n.id === r.b).classed('hover', true);
-      showTooltip(event, `${personName(r.a)} ↔ ${personName(r.b)} · ${STATUS[r.status].text}`);
+      showTooltip(event, `${chartNameById(r.a)} ↔ ${chartNameById(r.b)} · ${STATUS[r.status].text}`);
     })
     .on('mousemove', moveTooltip)
     .on('mouseleave', function () {
@@ -733,7 +744,8 @@ function renderChart() {
       svg.selectAll('.node').filter((n) => n.id === p.id).classed('hover', true);
       edges.filter((r) => r.a === p.id || r.b === p.id).classed('hover', true);
       const score = typeof p.score === 'number' ? ` · 점수 ${fmtScore(p.score)}` : '';
-      showTooltip(event, `${personLabel(p)}${score}`);
+      const d = deptById(p.departmentId);
+      showTooltip(event, `${chartName(p)} (${d ? d.name : '부서 없음'})${score}`);
     })
     .on('mousemove', moveTooltip)
     .on('mouseleave', () => {
@@ -749,7 +761,7 @@ function renderChart() {
     .attr('x', (p) => (pos.get(p.id).angle < 180 ? 10 : -10))
     .attr('text-anchor', (p) => (pos.get(p.id).angle < 180 ? 'start' : 'end'))
     .attr('transform', (p) => (pos.get(p.id).angle < 180 ? null : 'rotate(180)'))
-    .text((p) => p.name);
+    .text((p) => chartName(p));
 
   applyHighlight();
 }
@@ -1662,7 +1674,7 @@ async function diagramCanvas() {
   const font = getComputedStyle(document.body).fontFamily;
   const v = S.view || {};
   const scope = v.scope === 'dept' ? `부서: ${(deptById(v.deptId) || {}).name || ''}`
-    : v.scope === 'person' ? `부서원: ${personName(v.personId)}` : '팀 전체';
+    : v.scope === 'person' ? `부서원: ${chartNameById(v.personId)}` : '팀 전체';
   g.fillStyle = '#111827';
   g.font = `700 44px ${font}`;
   g.fillText(`${S.data.team.name} 관계도`, 60, 70);
