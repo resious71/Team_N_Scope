@@ -322,32 +322,38 @@ $mkUser = function (string $pid, string $login) use ($admin, $teamId, $base): Cl
 };
 $leader = $mkUser($p3, 'leader1');
 $head = $mkUser($p4, 'head1');
-$ownCount = fn(string $pid) => count(array_filter($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'],
-    fn($x) => ($x['a'] === $pid && $x['evalA'] !== null) || ($x['b'] === $pid && $x['evalB'] !== null)));
+$adminRels = fn() => $admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'];
+$noEvalDetail = fn($rels) => !array_filter($rels, fn($x) => array_key_exists('evalA', $x) || array_key_exists('evalB', $x) || array_key_exists('evalMgr', $x));
 $r = $leader->call('team_data');
-check('팀장은 팀 전체 사람·점수와 본인 평가 관계만 받음', count($r['data']['relationships']) === $ownCount($p3) && $r['data']['me']['position'] === 'leader'
+$lp1p2 = array_values(array_filter($r['data']['relationships'], fn($x) => $x['id'] === $p1p2))[0] ?? null;
+check('팀장은 팀 전체 사람·점수·모든 관계(낮은 값)를 받음', count($r['data']['relationships']) === count($adminRels()) && $r['data']['me']['position'] === 'leader'
     && count($r['data']['people']) === 6 && isset($r['data']['people'][0]['score'])
-    && !array_filter($r['data']['relationships'], fn($x) => ($x['a'] !== $p3 && $x['b'] !== $p3) || array_key_exists('evalMgr', $x)));
-check('팀장이 다른 두 사람 관계 추가 시 403', $leader->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'public'])['status'] === 403);
-check('팀장이 다른 두 사람 관계 삭제 시 403', $leader->call('relationship_delete', ['ids' => [$p1p2]])['status'] === 403);
+    && $lp1p2 && $lp1p2['status'] === 'private' && $lp1p2['mine'] === null);
+check('팀장에게 평가자별 평가는 보내지 않음', $noEvalDetail($r['data']['relationships']));
+check('팀장이 다른 두 사람 관계 추가 시 403 (보기만)', $leader->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'public'])['status'] === 403);
+check('팀장이 다른 두 사람 관계 삭제 시 403 (보기만)', $leader->call('relationship_delete', ['ids' => [$p1p2]])['status'] === 403);
 check('팀장이 본인↔타 부서원 관계 추가', $leader->call('relationship_upsert', ['otherId' => $p1, 'status' => 'private'])['status'] === 200);
 $p1p3 = $p1 < $p3 ? "{$p1}_{$p3}" : "{$p3}_{$p1}";
 $admin->call('relationship_upsert', ['teamId' => $teamId, 'a' => $p1, 'b' => $p3, 'status' => 'social']);
 $lrel = array_values(array_filter($leader->call('team_data')['data']['relationships'], fn($x) => $x['id'] === $p1p3))[0] ?? null;
-$arel = array_values(array_filter($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'], fn($x) => $x['id'] === $p1p3))[0];
-check('팀장은 관리자 평가가 있어도 본인 평가만 봄 (관리자는 낮은 값)', $lrel && $lrel['status'] === 'private' && $arel['status'] === 'social');
+check('팀장 관계도는 낮은 값, 본인 평가는 따로 (사적 vs 관리자 사회적 → 사회적)', $lrel && $lrel['status'] === 'social' && $lrel['mine'] === 'private');
 check('상대 부서원에게는 팀장의 평가가 보이지 않음', !array_filter($member->call('team_data')['data']['relationships'], fn($x) => $x['id'] === $p1p3));
+check('팀장이 본인↔자기 부서원 관계 추가', $leader->call('relationship_upsert', ['otherId' => $p5, 'status' => 'public'])['status'] === 200);
 check('부서장이 본인↔자기 부서원 관계 추가', $head->call('relationship_upsert', ['a' => $p4, 'b' => $p5, 'status' => 'private'])['status'] === 200);
-check('부서장이 자기 부서원끼리 관계 추가 시 403', $head->call('relationship_upsert', ['a' => $p5, 'b' => $p3, 'status' => 'private'])['status'] === 403);
+check('부서장이 자기 부서원끼리 관계 추가 시 403 (보기만)', $head->call('relationship_upsert', ['a' => $p5, 'b' => $p3, 'status' => 'private'])['status'] === 403);
 check('부서장이 타 부서원끼리 관계 추가 시 403', $head->call('relationship_upsert', ['a' => $p1, 'b' => $p2, 'status' => 'social'])['status'] === 403);
 check('부서장이 본인↔타 부서원 관계 추가 시 403', $head->call('relationship_upsert', ['otherId' => $p1, 'status' => 'social'])['status'] === 403);
 $r = $head->call('team_data');
-check('부서장은 자기 부서 사람·점수와 본인 평가 관계만 받음', count($r['data']['people']) === 3 && isset($r['data']['people'][0]['score'])
-    && count($r['data']['relationships']) === $ownCount($p4)
-    && !array_filter($r['data']['relationships'], fn($x) => $x['a'] !== $p4 && $x['b'] !== $p4));
+$plan = [$p3 => 1, $p4 => 1, $p5 => 1];
+$p3p5 = $p3 < $p5 ? "{$p3}_{$p5}" : "{$p5}_{$p3}";
+check('부서장은 자기 부서 사람·점수와 부서원 사이 모든 관계를 받음', count($r['data']['people']) === 3 && isset($r['data']['people'][0]['score'])
+    && count($r['data']['relationships']) === count(array_filter($adminRels(), fn($x) => isset($plan[$x['a']], $plan[$x['b']])))
+    && !array_filter($r['data']['relationships'], fn($x) => !isset($plan[$x['a']], $plan[$x['b']]))
+    && array_filter($r['data']['relationships'], fn($x) => $x['id'] === $p3p5 && $x['status'] === 'public' && $x['mine'] === null)
+    && $noEvalDetail($r['data']['relationships']));
 check('일반 부서원이 남의 관계 추가 시 403', $member->call('relationship_upsert', ['a' => $p2, 'b' => $p6, 'status' => 'social'])['status'] === 403);
-check('관리자가 관계 삭제', $admin->call('relationship_delete', ['teamId' => $teamId, 'ids' => [$p1p2, $p1p3]])['status'] === 200);
-check('당사자가 아닌 삭제는 쌍의 평가 전체 삭제', !array_filter($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'], fn($x) => in_array($x['id'], [$p1p2, $p1p3], true))
+check('관리자가 관계 삭제', $admin->call('relationship_delete', ['teamId' => $teamId, 'ids' => [$p1p2, $p1p3, $p3p5]])['status'] === 200);
+check('당사자가 아닌 삭제는 쌍의 평가 전체 삭제', !array_filter($admin->call('team_data', null, ['teamId' => $teamId])['data']['relationships'], fn($x) => in_array($x['id'], [$p1p2, $p1p3, $p3p5], true))
     && count($member->call('team_data')['data']['relationships']) === 0);
 $exp = $admin->call('team_export', null, ['teamId' => $teamId])['data'];
 check('내보내기에 직급 포함', in_array('leader', array_column($exp['people'], 'position'), true));
