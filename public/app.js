@@ -509,14 +509,13 @@ function allowedViewPeople() {
 }
 
 /**
- * 팀장: 팀 전체 / 부서장: 두 사람 모두 자기 부서원 / 부서원: 본인과 같은 부서원 사이 관계.
- * (부서장·부서원에게는 서버가 자기 부서 사람만 보내므로 "보이는 사람"이 곧 자기 부서원)
+ * 관리자: 모든 관계 / 그 외(팀장·부서장·부서원): 본인이 당사자인 관계만.
+ * (상대는 서버가 보내 준 사람 = 팀장은 팀 전체, 부서장·부서원은 자기 부서)
  */
 function canManagePair(a, b) {
-  const pos = myPosition();
-  if (pos === 'admin' || pos === 'leader') return true;
+  if (myPosition() === 'admin') return true;
   if (!personById(a) || !personById(b)) return false;
-  return pos === 'head' || a === myPersonId() || b === myPersonId();
+  return a === myPersonId() || b === myPersonId();
 }
 
 /** 팀장·부서장·관리자는 (보이는 범위의) 점수와 순위를 본다 */
@@ -528,7 +527,7 @@ function canSeeScores() {
 function partyACandidates() {
   const pos = myPosition();
   const people = orderedPeople();
-  if (pos === 'admin' || pos === 'leader' || pos === 'head') return people;
+  if (pos === 'admin') return people;
   return people.filter((p) => p.id === myPersonId());
 }
 
@@ -814,7 +813,7 @@ function hideTooltip() {
 // ---- 범례 ----------------------------------------------------------------
 function renderLegend() {
   // 부서원은 본인 평가만 보므로 "낮은 값으로 표시" 안내가 해당하지 않음
-  $('legend-eval-hint').hidden = myPosition() === 'member';
+  $('legend-eval-hint').hidden = myPosition() !== 'admin';
   const box = clear($('legend-status'));
   for (const key of STATUS_KEYS) {
     const cb = h('input', { type: 'checkbox', class: key, checked: S.statusFilter[key] });
@@ -881,12 +880,12 @@ function renderMyPanel() {
   const me = myPersonId();
   const pos = myPosition();
   $('my-score').textContent = `내 점수 ${fmtScore(S.data.me ? S.data.me.score : 0)}`;
-  $('my-rel-scope').textContent = pos === 'admin' || pos === 'leader' ? '· 팀 전체' : pos === 'head' ? '· 우리 부서원' : '· 내 관계';
+  $('my-rel-scope').textContent = pos === 'admin' ? '· 팀 전체' : '· 내 관계';
   const alone = S.data.people.length < 2;
   $('my-alone').hidden = !alone;
   $('my-rel-form').hidden = alone;
 
-  // 당사자(A): 부서원은 본인 고정, 부서장은 자기 부서원, 팀장은 전체
+  // 당사자(A): 관리자는 전체, 그 외(팀장·부서장·부서원)는 본인 고정
   const selA = $('my-rel-a');
   const prevA = selA.value;
   const cands = partyACandidates();
@@ -900,7 +899,7 @@ function renderMyPanel() {
 
   const manageable = S.data.relationships.filter((r) => canManagePair(r.a, r.b));
   const mine = myRelationships();
-  $('my-rel-count').textContent = pos === 'member'
+  $('my-rel-count').textContent = pos !== 'admin'
     ? `입력한 관계 ${mine.length} / 최대 ${Math.max(S.data.people.length - 1, 0)}`
     : `관리 가능한 관계 ${manageable.length}개`;
   const q = S.myRelFilter.trim().toLowerCase();
@@ -959,7 +958,7 @@ function renderPartyB() {
 }
 
 /**
- * 저장하면 바뀌는 평가: 본인이 당사자면 본인 평가, 아니면(팀장·부서장·관리자) 관리자 평가.
+ * 저장하면 바뀌는 평가: 본인이 당사자면 본인 평가, 관리자면 관리자 평가.
  * 그 평가가 이미 있으면 현재 값을 표시하고 버튼을 "수정"으로.
  */
 function editableEval(rel, a, b) {
@@ -1146,10 +1145,10 @@ function missingPositions() {
 function vacancyWarning(people) {
   const lines = [];
   for (const p of people) {
-    if (p.position === 'leader') lines.push(`⚠ 팀장(${p.name})이 없어지면 팀 전체 관계를 관리할 사람이 없습니다.`);
+    if (p.position === 'leader') lines.push(`⚠ 팀장(${p.name})이 없어지면 팀 전체 점수·순위를 볼 사람이 없습니다.`);
     if (p.position === 'head') {
       const d = deptById(p.departmentId);
-      lines.push(`⚠ ${d ? d.name : ''} 부서장(${p.name})이 없어지면 그 부서의 관계를 관리할 사람이 없습니다.`);
+      lines.push(`⚠ ${d ? d.name : ''} 부서장(${p.name})이 없어지면 그 부서의 점수·순위를 볼 사람이 없습니다.`);
     }
   }
   return lines.length ? `\n\n${lines.join('\n')}` : '';

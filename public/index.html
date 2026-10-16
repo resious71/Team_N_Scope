@@ -142,7 +142,7 @@
               <textarea id="info-members" readonly aria-label="부서 소속 인원"></textarea>
             </div>
 
-            <!-- 부서원: 관계 관리 (부서원=본인 관계, 부서장=자기 부서원 관계, 팀장=팀 전체) -->
+            <!-- 관계 관리 (관리자=모든 관계, 팀장·부서장·부서원=본인 관계) -->
             <div id="panel-my-relations" class="card panel" hidden>
               <h3><span class="icon" data-icon="link" aria-hidden="true"></span>관계 관리 <span id="my-rel-scope" class="muted scope-note"></span></h3>
               <p id="my-alone" class="muted" hidden>팀에 본인만 있어 관계를 추가할 수 없습니다.</p>
@@ -209,7 +209,7 @@
               <p class="muted no-team-msg">선택된 팀이 없습니다.</p>
               <div class="needs-team">
                 <label>팀 이름<input id="team-edit-name" maxlength="30" required></label>
-                <p class="hint">부서원은 본인이 등록한 평가만, 부서장은 자기 부서, 팀장은 팀 전체 관계를 봅니다 (두 사람의 평가가 다르면 낮은 값).</p>
+                <p class="hint">모든 관계는 관리자만 봅니다. 팀장·부서장·부서원은 본인이 등록한 평가만 봅니다 (점수는 두 사람의 평가 중 낮은 값 기준).</p>
                 <label>부서원 인원 한도<input id="team-edit-max" type="number" min="1" required></label>
                 <p id="team-edit-max-hint" class="hint"></p>
                 <div class="row-end">

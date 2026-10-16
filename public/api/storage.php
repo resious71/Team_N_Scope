@@ -68,12 +68,12 @@ const LOGIN_ID_PATTERN = '/^[a-z0-9_.-]{4,20}$/';
  * 개인정보 안내문. 문구를 개정하면 PRIVACY_NOTICE_VERSION을 개정 시각으로 올린다.
  * consentedAt이 이 값보다 이전이면 재동의를 요구한다.
  */
-const PRIVACY_NOTICE_VERSION = '2026-10-16T00:00:00+09:00';
+const PRIVACY_NOTICE_VERSION = '2026-10-16T12:00:00+09:00';
 const PRIVACY_NOTICE = [
     '이 서비스는 팀 내 관계를 시각화하기 위해 입력된 관계 평가(사적·공적·사회적)를 수집합니다.',
-    '관계 평가는 입력한 사람별로 따로 저장됩니다. 부서원은 본인이 등록한 평가만 볼 수 있으며, 다른 사람이 입력한 평가는 본인이 포함되어도 보이지 않습니다.',
-    '두 사람 사이의 평가가 서로 다르면 그중 낮은 값이 관계도와 두 사람의 점수에 반영됩니다. 팀장·부서장·관리자는 당사자가 아닌 관계에 별도의 관리자 평가를 입력할 수 있으며, 이 평가도 낮은 값 계산에 포함됩니다.',
-    '팀장은 팀 전체, 부서장은 자기 부서의 관계를 낮은 값으로 보고, 점수·순위를 볼 수 있습니다. 관리자는 쌍마다 각자의 평가와 입력자, 변경 이력, 점수 추이를 열람할 수 있습니다.',
+    '관계 평가는 입력한 사람별로 따로 저장됩니다. 관리자를 제외한 모든 사용자(팀장·부서장 포함)는 본인이 등록한 평가만 볼 수 있으며, 다른 사람이 입력한 평가는 본인이 포함되어도 보이지 않습니다.',
+    '두 사람 사이의 평가가 서로 다르면 그중 낮은 값이 두 사람의 점수에 반영됩니다. 관리자는 당사자가 아닌 관계에 별도의 관리자 평가를 입력할 수 있으며, 이 평가도 낮은 값 계산에 포함됩니다.',
+    '팀장은 팀 전체, 부서장은 자기 부서 인원의 점수·순위를 볼 수 있습니다. 모든 관계와 쌍마다 각자의 평가, 입력자, 변경 이력, 점수 추이는 관리자만 열람할 수 있습니다.',
     '부서원 또는 팀이 삭제되면 관련 관계·변경 이력과 계정은 즉시 삭제됩니다. 백업은 14일, 활동 로그는 12개월간 보관 후 삭제됩니다.',
     '평가 정보의 사용 목적 제한 등 세부 사항은 조직의 개인정보·인사 관련 정책을 따릅니다.',
 ];
@@ -595,37 +595,29 @@ function member_visible_people(array $team, array $me): array
 }
 
 /**
- * 부서원 계정이 두 사람 사이 관계를 추가·수정·삭제할 수 있는지.
- * 팀장: 팀 전체 / 부서장: 두 사람 모두 자기 부서원 / 부서원: 본인과 같은 부서원 사이의 관계만.
+ * 관리자가 아닌 계정이 두 사람 사이 관계를 추가·수정·삭제할 수 있는지.
+ * 직급과 관계없이 본인이 당사자인 관계만 (상대는 팀장: 팀 전체 / 부서장·부서원: 자기 부서).
  */
 function member_can_manage(array $team, array $me, string $a, string $b): bool
 {
-    $pos = position_of($me);
-    if ($pos === 'leader') {
-        return true;
-    }
-    $visible = member_visible_people($team, $me);
-    if (!isset($visible[$a], $visible[$b])) {
+    // 관리자가 아니면(팀장·부서장 포함) 본인이 당사자인 관계만, 상대는 보이는 범위 안
+    if ($a !== $me['id'] && $b !== $me['id']) {
         return false;
     }
-    return $pos === 'head' || $a === $me['id'] || $b === $me['id'];
+    $visible = member_visible_people($team, $me);
+    return isset($visible[$a], $visible[$b]);
 }
 
 /**
- * 부서원 계정에게 보내는 관계 (두 당사자가 모두 보이는 범위에 있어야 함).
- * 팀장: 팀 전체 / 부서장: 자기 부서 안 — 쌍의 유효 상태(가장 낮은 값)
- * 부서원: 본인이 등록한 평가가 있는 관계만 (다른 사람이 입력한 평가는 본인이 포함돼도 보이지 않음)
+ * 관리자가 아닌 계정(팀장·부서장·부서원)에게 보내는 관계:
+ * 본인이 등록한 평가가 있는 관계만 (다른 사람이 입력한 평가는 본인이 포함돼도 보이지 않음).
+ * 모든 관계는 관리자만 본다.
  */
 function member_visible_relationships(array $team, array $me): array
 {
     $visible = member_visible_people($team, $me);
-    $ownOnly = position_of($me) === 'member';
-    return array_values(array_filter($team['relationships'], function ($r) use ($me, $visible, $ownOnly) {
-        if (!isset($visible[$r['a']], $visible[$r['b']])) {
-            return false;
-        }
-        return !$ownOnly || isset($r['evals'][$me['id']]);
-    }));
+    return array_values(array_filter($team['relationships'], fn($r) =>
+        isset($visible[$r['a']], $visible[$r['b']], $r['evals'][$me['id']])));
 }
 
 /**
