@@ -5,9 +5,13 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-16
+
+업데이트 후 예전 화면이 남는 문제를 고친 수정 릴리스입니다. 데이터 형식 변경은 없습니다.
+
 ### 수정
 - 업데이트 후 브라우저가 예전 `app.js`·`style.css`를 계속 써서 새 기능이 보이지 않던 문제
-  - CSS·JS 주소에 버전을 붙여(`?v=1.2.0`) 버전이 바뀌면 새로 받음
+  - CSS·JS 주소에 버전을 붙여(예: `?v=1.2.1`) 버전이 바뀌면 새로 받음
   - Apache `.htaccess`와 운영 문서의 nginx·Apache 설정에 화면 파일 `no-cache` 추가
   - 운영 문서 장애 표에 "업데이트했는데 예전 그대로" 확인 방법 추가
 
@@ -81,7 +85,8 @@
 - 기본 관리자 계정 자동 생성 (`admin` / `admin`, 관리자가 하나도 없을 때)
 - API 통합 테스트 108개 (`tests/api_test.php`)
 
-[Unreleased]: https://github.com/resious71/Team_N_Scope/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/resious71/Team_N_Scope/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/resious71/Team_N_Scope/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/resious71/Team_N_Scope/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/resious71/Team_N_Scope/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/resious71/Team_N_Scope/releases/tag/v1.0.0
