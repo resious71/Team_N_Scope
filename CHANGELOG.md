@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-16
+
+팀장·부서장의 관계 열람 범위를 넓힌 릴리스입니다. 데이터 형식 변경은 없습니다.
+
 ### 변경
 - **팀장·부서장이 범위 안의 모든 관계를 봄** (v1.2.0의 "모든 관계는 관리자만"을 되돌림)
   - 팀장: 모든 부서의 관계도와 팀 전체 관계, 부서장: 자기 부서 관계도와 부서원 사이 모든 관계 (쌍의 낮은 값)
@@ -93,7 +97,8 @@
 - 기본 관리자 계정 자동 생성 (`admin` / `admin`, 관리자가 하나도 없을 때)
 - API 통합 테스트 108개 (`tests/api_test.php`)
 
-[Unreleased]: https://github.com/resious71/Team_N_Scope/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/resious71/Team_N_Scope/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/resious71/Team_N_Scope/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/resious71/Team_N_Scope/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/resious71/Team_N_Scope/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/resious71/Team_N_Scope/compare/v1.0.0...v1.1.0
